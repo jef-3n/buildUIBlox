@@ -2,8 +2,10 @@ import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
 import { sampleCompiledArtifact } from './sample-compiled';
-import type { FrameName } from './compiled-canvas';
+import type { FrameName } from './frame-types';
 import { elementPathPattern } from './paths';
+import { normalizeFrameScopedPath, setPathValue } from './path-edits';
+import type { CompiledArtifact } from './compiled-canvas';
 
 type UiState = {
   activeFrame: FrameName;
@@ -17,11 +19,16 @@ type HostState = {
   ui: UiState;
   selection: SelectionState;
   selectionsByFrame: Record<FrameName, string | undefined>;
+  artifact: CompiledArtifact;
 };
 
 type HostEvent =
   | { type: 'UI_SET_FRAME'; payload: { frame: FrameName } }
-  | { type: 'SELECTION_SET'; payload: { path: string } };
+  | { type: 'SELECTION_SET'; payload: { path: string } }
+  | {
+      type: 'ARTIFACT_PATH_EDIT';
+      payload: { path: string; value: unknown; frame?: FrameName };
+    };
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
@@ -30,6 +37,7 @@ export class NuwaHost extends LitElement {
     ui: { activeFrame: 'desktop' },
     selection: { path: undefined },
     selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
+    artifact: sampleCompiledArtifact,
   };
 
   static styles = css`
@@ -96,10 +104,11 @@ export class NuwaHost extends LitElement {
       <main class="center">
         <slot>
           <compiled-canvas
-            .artifact=${sampleCompiledArtifact}
+            .artifact=${this.hostState.artifact}
             .activeFrame=${activeFrame}
             .selectedPath=${this.hostState.selection.path}
             @SELECTION_SET=${this.handleSelectionSet}
+            @ARTIFACT_PATH_EDIT=${this.handleArtifactPathEdit}
           ></compiled-canvas>
         </slot>
       </main>
@@ -143,6 +152,17 @@ export class NuwaHost extends LitElement {
     this.dispatch({ type: 'SELECTION_SET', payload: { path } });
   }
 
+  private handleArtifactPathEdit(
+    event: CustomEvent<{ path: string; value: unknown; frame?: FrameName }>
+  ) {
+    event.stopPropagation();
+    const { path, value, frame } = event.detail ?? {};
+    if (!path) {
+      return;
+    }
+    this.dispatch({ type: 'ARTIFACT_PATH_EDIT', payload: { path, value, frame } });
+  }
+
   private dispatch(event: HostEvent) {
     const nextState = hostReducer(this.hostState, event);
     if (nextState === this.hostState) {
@@ -175,6 +195,21 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
           ...state.selectionsByFrame,
           [state.ui.activeFrame]: event.payload.path,
         },
+      };
+    }
+    case 'ARTIFACT_PATH_EDIT': {
+      const targetFrame = event.payload.frame ?? state.ui.activeFrame;
+      const normalizedPath = normalizeFrameScopedPath(event.payload.path, targetFrame);
+      if (!normalizedPath) {
+        return state;
+      }
+      const nextArtifact = setPathValue(state.artifact, normalizedPath, event.payload.value);
+      if (!nextArtifact) {
+        return state;
+      }
+      return {
+        ...state,
+        artifact: nextArtifact,
       };
     }
     default:

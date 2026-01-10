@@ -7,8 +7,8 @@ import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import '../ghost/ghost-layer';
 import type { GhostHotspot } from '../ghost/ghost-layer';
 import { getElementIdFromPath } from './paths';
-
-export type FrameName = 'desktop' | 'tablet' | 'mobile';
+import { getPathValue } from './path-edits';
+import type { FrameName } from './frame-types';
 
 type StyleValue = string | number;
 
@@ -59,16 +59,6 @@ export type CompiledArtifact = {
 
 const isCompiledArtifact = (artifact?: CompiledArtifact): artifact is CompiledArtifact => {
   return Boolean(artifact && artifact.schemaVersion === 'compiled.v1' && artifact.runtime);
-};
-
-const getPathValue = (data: unknown, path?: string) => {
-  if (!data || !path) return undefined;
-  return path.split('.').reduce<unknown>((acc, key) => {
-    if (acc && typeof acc === 'object' && key in acc) {
-      return (acc as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }, data);
 };
 
 const resolveStyler = (styler: CompiledNode['props'] extends { styler?: infer S } ? S : undefined, frame: FrameName) => {
