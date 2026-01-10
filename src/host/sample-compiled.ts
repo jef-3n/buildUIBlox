@@ -38,6 +38,26 @@ export const sampleCompiledArtifact: CompiledArtifact = {
         { title: 'Styler Bridge', description: 'JSON-driven styling at runtime.' },
       ],
     },
+    ghostMap: [
+      {
+        id: 'header-hotspot',
+        rect: { x: 0, y: 0, w: 360, h: 48 },
+        emitter: 'OPEN_HEADER_PANEL',
+        path: 'header',
+      },
+      {
+        id: 'hero-hotspot',
+        rect: { x: 0, y: 72, w: 640, h: 140 },
+        emitter: { type: 'OPEN_HERO_DETAILS', payload: { section: 'hero' } },
+        path: 'hero',
+      },
+      {
+        id: 'list-hotspot',
+        rect: { x: 0, y: 240, w: 640, h: 240 },
+        emitter: 'OPEN_CATALOG',
+        path: 'repeater',
+      },
+    ],
     nodes: {
       header: {
         type: 'text',
