@@ -289,7 +289,86 @@ This section is the single source of truth for schema authority, validation, and
 * **Retries:** Only idempotent events may retry; non-idempotent events must hard fail with guidance in logs.  
 * **Backpressure:** If event throughput exceeds limits, respond with `EVENT_THROTTLED` and enqueue for retry when allowed.
 
-### **6.3 Schema Versioning & Validation Strategy**
+### **6.3 Reducer Contracts & Dispatch Flow**
+
+**Immutable reducer signatures**
+
+```ts
+type Reducer<State, Event> = (
+  state: Readonly<State>,
+  event: Readonly<Event>
+) => State;
+
+type DomainReducers = {
+  data: Reducer<DraftState, EventEnvelope>;
+  ui: Reducer<UiState, EventEnvelope>;
+  selection: Reducer<ActiveSelectionState, EventEnvelope>;
+  compiled: Reducer<CompiledState, EventEnvelope>;
+};
+```
+
+* **Immutability:** Reducers MUST return new state objects and never mutate inputs.  
+* **Domain scope:** Each reducer only touches its own context slice; cross-domain updates happen via dispatching additional events.  
+* **Compiled guardrail:** The `compiled` reducer is read-only at authoring time; it only responds to compiler output events (e.g., `PIPELINE_BUILD_COMPLETE`).
+
+**Event dispatch flow**
+
+1. **Ingress:** Raw input (UI, Ghost, API, Worker) enters the Root Listener.  
+2. **Normalize:** Wrap in `event.v1` envelope and append `cursor`.  
+3. **Validate:** Enforce `payloadSchemas[type]`; reject on failure.  
+4. **Lock check:** If `requiresDraftLock=true` and `buildStatus=compiling`, reject.  
+5. **Dispatch:** Route to domain reducers in deterministic order: `data → ui → selection → compiled`.  
+6. **Derive:** Recompute derived selectors (layout caches, ghost hitbox projections, UI flags).  
+7. **Persist:** Commit stored slices to Firestore (Draft/UI/Selection) and write compiled outputs only from compiler workers.  
+8. **Broadcast:** Emit state-change notifications and telemetry events to all connected surfaces.
+
+### **6.4 Context Distribution Layers**
+
+**Data Context (Design State)**
+
+* **Source:** Draft (`draft.v1`) document.  
+* **Purpose:** Canonical content model: nodes, frames, styler, bindings, assets.  
+* **Consumers:** Compiler, View Factory, Tree UI, Inspector.  
+
+**UI Context**
+
+* **Source:** `uiState.v1` in `globalSession`.  
+* **Purpose:** Host layout, scaling, drawer visibility, active frame.  
+* **Consumers:** Host shell, drawers, canvas scaling, ghost recalibration.  
+
+**Selection Context**
+
+* **Source:** `activeSelection.v1` in `globalSession`.  
+* **Purpose:** User focus: nodeId, path, stylerPath, source.  
+* **Consumers:** Styler/Inspector, breadcrumb UI, multi-surface highlighting.  
+
+**Compiled Context**
+
+* **Source:** `compiled.v1` artifact + `ghostMap.v1`.  
+* **Purpose:** Read-only runtime surface for preview and production.  
+* **Consumers:** Renderer, Ghost Layer, published runtime.  
+
+### **6.5 Derived vs Stored State Rules**
+
+**Stored state (authoritative, persisted)**
+
+* Draft (Design State), UI state, Selection state, and Compiled artifacts.  
+* Only mutated via validated events or compiler workers.  
+* Must be schema versioned and durable across sessions.
+
+**Derived state (computed, ephemeral)**
+
+* Ghost hitbox projections, layout caches, visibility flags, selection outlines, and memoized selectors.  
+* Must be recomputable from stored state at any time.  
+* Never persisted to Firestore; never written as a source of truth.
+
+**Rules**
+
+* Do not dispatch events that directly mutate derived state.  
+* If a derived value needs persistence, promote it to stored state with a schema and migration plan.  
+* Derived state must be invalidated and recomputed after every stored-state mutation.
+
+### **6.6 Schema Versioning & Validation Strategy**
 
 * **Versioned Keys:** `schemaVersion` is mandatory for every payload and uses `name.vN` (e.g., `draft.v1`).  
 * **Forward-Only Migration:** Consumers MUST reject unknown major versions; minor patches must be additive.  
@@ -298,7 +377,7 @@ This section is the single source of truth for schema authority, validation, and
 * **Session Integrity:** `compiled.draftId` MUST match `globalSession.draftId` at publish time.  
 * **Hash Integrity:** Compiled Artifacts include `integrity.sourceHash` of the Draft to detect drift.
 
-### **6.4 Blocker Criteria (Hard Failures)**
+### **6.7 Blocker Criteria (Hard Failures)**
 
 Any of the following MUST block writes, builds, or publish operations:
 
