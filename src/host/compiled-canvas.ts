@@ -6,6 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import '../ghost/ghost-layer';
 import type { GhostHotspot } from '../ghost/ghost-layer';
+import { getElementIdFromPath } from './paths';
 
 export type FrameName = 'desktop' | 'tablet' | 'mobile';
 
@@ -121,6 +122,11 @@ export class CompiledCanvas extends LitElement {
       display: grid;
       gap: 8px;
     }
+
+    .selected {
+      outline: 2px solid rgba(59, 130, 246, 0.9);
+      outline-offset: 2px;
+    }
   `;
 
   @property({ attribute: false })
@@ -131,6 +137,9 @@ export class CompiledCanvas extends LitElement {
 
   @property({ type: Boolean, attribute: 'ghost-authority' })
   ghostAuthority = true;
+
+  @property({ type: String, attribute: false })
+  selectedPath?: string;
 
   render() {
     if (!isCompiledArtifact(this.artifact)) {
@@ -166,6 +175,7 @@ export class CompiledCanvas extends LitElement {
         <ghost-layer
           .ghostMap=${ghostMap}
           .interactionAuthority=${this.ghostAuthority}
+          @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
         ></ghost-layer>
       </div>
     `;
@@ -191,7 +201,9 @@ export class CompiledCanvas extends LitElement {
     };
 
     const classes = classMap(
-      node.props?.className ? { [node.props.className]: true } : {}
+      node.props?.className
+        ? { [node.props.className]: true, selected: this.isSelected(nodeId) }
+        : { selected: this.isSelected(nodeId) }
     );
     const tagName = unsafeStatic(tag);
 
@@ -279,5 +291,24 @@ export class CompiledCanvas extends LitElement {
         )}
       </div>
     `;
+  }
+
+  private isSelected(nodeId: string) {
+    if (!this.selectedPath) return false;
+    return getElementIdFromPath(this.selectedPath) === nodeId;
+  }
+
+  private handleGhostSelection(event: CustomEvent<{ path: string }>) {
+    event.stopPropagation();
+    const path = event.detail.path;
+    if (path) {
+      this.dispatchEvent(
+        new CustomEvent('SELECTION_SET', {
+          detail: { path },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
   }
 }
