@@ -1,5 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement } from 'lit/decorators.js';
+import './compiled-canvas';
+import { sampleCompiledArtifact } from './sample-compiled';
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
@@ -63,7 +65,12 @@ export class NuwaHost extends LitElement {
         <slot name="left"><div class="stub">Left drawer</div></slot>
       </div>
       <main class="center">
-        <slot><div class="stub">Center canvas</div></slot>
+        <slot>
+          <compiled-canvas
+            .artifact=${sampleCompiledArtifact}
+            activeFrame="desktop"
+          ></compiled-canvas>
+        </slot>
       </main>
       <div class="drawer right">
         <slot name="right"><div class="stub">Right drawer</div></slot>
