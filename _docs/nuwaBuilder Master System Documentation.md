@@ -250,13 +250,44 @@ This section is the single source of truth for schema authority, validation, and
   "schemaVersion": "event.v1",
   "eventId": "string",
   "sessionId": "string",
+  "cursor": "number",
   "type": "PIPELINE_TRIGGER_BUILD|UI_TOGGLE_DRAWER|STYLER_UPDATE_PROP|GHOST_SELECT_ELEMENT|BOOTSTRAP_LOAD_CORE",
   "actor": { "userId": "string", "role": "human|ai|system" },
+  "origin": { "surfaceId": "string", "source": "ghost|ui|api|worker" },
   "payload": { "key": "value" },
+  "telemetry": {
+    "traceId": "string",
+    "spanId": "string",
+    "correlationId": "string",
+    "receivedAt": "iso-8601"
+  },
   "timestamp": "iso-8601",
   "requiresDraftLock": "boolean"
 }
 ```
+
+**event naming & payload rules**
+
+* **Type Naming:** `type` is `DOMAIN_ACTION` (UPPER_SNAKE_CASE). Domains are stable (`UI_`, `GHOST_`, `STYLER_`, `PIPELINE_`, `BOOTSTRAP_`), actions are verbs.  
+* **Event IDs:** `eventId` is globally unique (UUID or ULID) and immutable; `cursor` is strictly increasing per `sessionId`.  
+* **Payload Schema:** `payload` MUST validate against the schema registered for the event `type` (`payloadSchemas[type]`). No `any` payloads in production paths.  
+* **Actor/Origin:** `actor` identifies who initiated the event; `origin` identifies where the event entered the system. Both are required.  
+* **Timestamping:** `timestamp` is the client-generated time; `telemetry.receivedAt` is the server ingress time.
+
+**root listener & handler registry**
+
+* **Root Listener:** A single root listener ingests all raw events, normalizes them into the event envelope, validates schema, and appends `cursor` before dispatch.  
+* **Handler Registry:** Registry is a map of `type -> handler[]` with deterministic order. Handlers declare `requiresDraftLock`, `mutatesDraft`, and `telemetryTags`.  
+* **Dispatch Rules:** Unknown `type` is rejected with `errorCode=EVENT_UNREGISTERED` and no mutation.  
+* **Isolation:** Handlers run in order; failures do not short-circuit subsequent handlers unless explicitly marked `blocking=true`.
+
+**telemetry & error handling**
+
+* **Telemetry Fields:** `traceId`/`spanId` (distributed tracing), `correlationId` (client session thread), plus handler-level tags.  
+* **Validation Failures:** Reject event, emit `EVENT_VALIDATION_FAILED`, increment error metrics, and do not mutate state.  
+* **Handler Errors:** Capture `errorId`, `errorCode`, and sanitized `message` in logs; emit `EVENT_HANDLER_FAILED` with the same `eventId`.  
+* **Retries:** Only idempotent events may retry; non-idempotent events must hard fail with guidance in logs.  
+* **Backpressure:** If event throughput exceeds limits, respond with `EVENT_THROTTLED` and enqueue for retry when allowed.
 
 ### **6.3 Schema Versioning & Validation Strategy**
 
