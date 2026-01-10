@@ -111,4 +111,170 @@ The **nuwaBuilder** is a visual IDE for manipulating the nuwaBloc Design State. 
 
 * **Branching:** "Draft" is the live stream; "Publish" is a snapshot of both Design \+ Compiled artifacts.  
 * **Rollback:** Point the session ID back to the last good snapshot document.  
-* **Storage:** All data is housed in /artifacts/{appId}/public/data/.
+* **Storage:** All data is housed in /artifacts/{appId}/public/data/.  
+
+## **6\. Rulebook & Enforcement (Authoritative)**
+
+This section is the single source of truth for schema authority, validation, and enforcement. Any subsystem that ingests or emits a nuwaBuilder payload MUST comply with this Rulebook.
+
+### **6.1 Rulebook Principles**
+
+* **Canonical Schemas Only:** All documents and events MUST conform to the canonical schemas below.  
+* **Immutable Compiled Outputs:** Compiled Artifacts are read-only by all authoring surfaces.  
+* **Single-Writer Rule:** Draft mutation is only permitted via declared event envelopes.  
+* **Versioned Authority:** Every schema and payload is versioned and validated at ingress.  
+* **Blocker-First Enforcement:** Violations that can corrupt state or create irreversible mismatches are blocked immediately.
+
+### **6.2 Canonical Schemas**
+
+> **Notation:** The shapes below are structural contracts. Field types are strict; `?` indicates optional.
+
+**Draft (Design State)**
+
+```json
+{
+  "schemaVersion": "draft.v1",
+  "draftId": "string",
+  "appId": "string",
+  "ownerId": "string",
+  "updatedAt": "iso-8601",
+  "rootNodeId": "string",
+  "nodes": {
+    "nodeId": {
+      "type": "string",
+      "props": { "key": "value" },
+      "children": ["nodeId"],
+      "styler": { "token": "value" },
+      "dataBindings": { "path": "string" }
+    }
+  },
+  "assets": {
+    "assetId": { "type": "image|video|font", "url": "string" }
+  },
+  "frames": {
+    "desktop": { "grid": "object", "order": ["nodeId"] },
+    "tablet?": { "grid": "object", "order": ["nodeId"] },
+    "mobile": { "grid": "object", "order": ["nodeId"] }
+  },
+  "meta": { "name": "string", "tags": ["string"] }
+}
+```
+
+**Compiled Artifact**
+
+```json
+{
+  "schemaVersion": "compiled.v1",
+  "compiledId": "string",
+  "draftId": "string",
+  "appId": "string",
+  "compiledAt": "iso-8601",
+  "css": "string",
+  "runtime": {
+    "nodes": { "nodeId": { "type": "string", "props": { "key": "value" } } },
+    "layout": { "frames": { "desktop": "object", "mobile": "object" } }
+  },
+  "ghostMap": {
+    "nodeId": { "bounds": [0, 0, 0, 0], "handlers": ["eventId"] }
+  },
+  "integrity": { "sourceHash": "string", "compilerVersion": "string" }
+}
+```
+
+**globalSession**
+
+```json
+{
+  "schemaVersion": "session.v1",
+  "sessionId": "string",
+  "appId": "string",
+  "userId": "string",
+  "buildStatus": "idle|compiling|error|success",
+  "draftId": "string",
+  "compiledId": "string",
+  "ui": { "$ref": "uiState.v1" },
+  "activeSelection": { "$ref": "activeSelection.v1" },
+  "eventCursor": "number",
+  "updatedAt": "iso-8601"
+}
+```
+
+**ui state**
+
+```json
+{
+  "schemaVersion": "uiState.v1",
+  "drawers": {
+    "left": "open|closed",
+    "right": "open|closed",
+    "bottom": "open|closed"
+  },
+  "scale": "number",
+  "activeFrame": "desktop|tablet|mobile",
+  "snifferEnabled": "boolean"
+}
+```
+
+**activeSelection**
+
+```json
+{
+  "schemaVersion": "activeSelection.v1",
+  "nodeId": "string",
+  "path": ["string"],
+  "stylerPath": ["string"],
+  "source": "ghost|tree|search",
+  "updatedAt": "iso-8601"
+}
+```
+
+**ghostMap**
+
+```json
+{
+  "schemaVersion": "ghostMap.v1",
+  "nodeId": {
+    "bounds": [0, 0, 0, 0],
+    "frame": "desktop|tablet|mobile",
+    "handlers": [
+      { "eventId": "string", "type": "click|hover|drag|drop" }
+    ]
+  }
+}
+```
+
+**event envelope**
+
+```json
+{
+  "schemaVersion": "event.v1",
+  "eventId": "string",
+  "sessionId": "string",
+  "type": "PIPELINE_TRIGGER_BUILD|UI_TOGGLE_DRAWER|STYLER_UPDATE_PROP|GHOST_SELECT_ELEMENT|BOOTSTRAP_LOAD_CORE",
+  "actor": { "userId": "string", "role": "human|ai|system" },
+  "payload": { "key": "value" },
+  "timestamp": "iso-8601",
+  "requiresDraftLock": "boolean"
+}
+```
+
+### **6.3 Schema Versioning & Validation Strategy**
+
+* **Versioned Keys:** `schemaVersion` is mandatory for every payload and uses `name.vN` (e.g., `draft.v1`).  
+* **Forward-Only Migration:** Consumers MUST reject unknown major versions; minor patches must be additive.  
+* **Ingress Validation:** Every write path (UI, API, compiler, worker) validates against schema before mutation.  
+* **Compile Gate:** Compiler validates the Draft and refuses output on violations; the build status is set to `error`.  
+* **Session Integrity:** `compiled.draftId` MUST match `globalSession.draftId` at publish time.  
+* **Hash Integrity:** Compiled Artifacts include `integrity.sourceHash` of the Draft to detect drift.
+
+### **6.4 Blocker Criteria (Hard Failures)**
+
+Any of the following MUST block writes, builds, or publish operations:
+
+1. **Schema Mismatch:** Missing/incorrect `schemaVersion` or type violations.  
+2. **Draft/Compiled Mismatch:** `compiled.draftId` does not equal the Draft being published.  
+3. **Immutable Breach:** Attempt to mutate `compiled.v1` or `ghostMap.v1` directly from the editor.  
+4. **Invalid Selection:** `activeSelection.nodeId` missing in Draft `nodes`.  
+5. **Ghost Map Drift:** `ghostMap` references node IDs that are absent in the Compiled runtime.  
+6. **Locked Draft Mutation:** `requiresDraftLock=true` event is processed while `buildStatus=compiling`.  
+7. **Unauthorized Actor:** `event.actor.role` not in `human|ai|system` or missing `userId`.
