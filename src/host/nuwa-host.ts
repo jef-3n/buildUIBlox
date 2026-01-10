@@ -179,12 +179,10 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
         return state;
       }
       const nextFrame = event.payload.frame;
-      const nextSelection =
-        state.selectionsByFrame[nextFrame] ?? state.selection.path;
       return {
         ...state,
         ui: { activeFrame: nextFrame },
-        selection: { path: nextSelection },
+        selection: { path: state.selectionsByFrame[nextFrame] },
       };
     }
     case 'SELECTION_SET': {
