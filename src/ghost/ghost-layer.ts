@@ -3,6 +3,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { buildElementPath } from '../host/paths';
+import type { FrameName } from '../host/frame-types';
 
 export type GhostRect = {
   x: number;
@@ -20,6 +21,7 @@ export type GhostEmitter =
 
 export type GhostHotspot = {
   id: string;
+  frame?: FrameName;
   rect: GhostRect;
   emitter?: GhostEmitter;
   payload?: unknown;

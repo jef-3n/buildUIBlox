@@ -61,7 +61,10 @@ const isCompiledArtifact = (artifact?: CompiledArtifact): artifact is CompiledAr
   return Boolean(artifact && artifact.schemaVersion === 'compiled.v1' && artifact.runtime);
 };
 
-const resolveStyler = (styler: CompiledNode['props'] extends { styler?: infer S } ? S : undefined, frame: FrameName) => {
+const resolveStyler = (
+  styler: CompiledNode['props'] extends { styler?: infer S } ? S : undefined,
+  frame: FrameName
+) => {
   if (!styler) return {};
   const { frames, ...base } = styler as Record<string, StyleValue | Record<string, Record<string, StyleValue>>> & {
     frames?: Record<string, Record<string, StyleValue>>;
@@ -136,9 +139,10 @@ export class CompiledCanvas extends LitElement {
       return html`<div class="empty-state">Compiled artifact required for runtime rendering.</div>`;
     }
 
-    const frame =
-      this.artifact.runtime.layout.frames[this.activeFrame] ??
-      this.artifact.runtime.layout.frames.desktop;
+    const resolvedFrameName = this.artifact.runtime.layout.frames[this.activeFrame]
+      ? this.activeFrame
+      : 'desktop';
+    const frame = this.artifact.runtime.layout.frames[resolvedFrameName];
 
     if (!frame) {
       return html`<div class="empty-state">No frame definition found for ${this.activeFrame}.</div>`;
@@ -150,7 +154,9 @@ export class CompiledCanvas extends LitElement {
       gridTemplateAreas: frame.grid.areas.join(' '),
     };
 
-    const ghostMap = this.artifact.runtime.ghostMap ?? [];
+    const ghostMap = (this.artifact.runtime.ghostMap ?? []).filter(
+      (hotspot) => !hotspot.frame || hotspot.frame === resolvedFrameName
+    );
 
     return html`
       <style>${this.artifact.css}</style>
@@ -159,7 +165,8 @@ export class CompiledCanvas extends LitElement {
           ${repeat(
             frame.order,
             (nodeId) => nodeId,
-            (nodeId) => this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {})
+            (nodeId) =>
+              this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {}, resolvedFrameName)
           )}
         </section>
         <ghost-layer
@@ -171,14 +178,19 @@ export class CompiledCanvas extends LitElement {
     `;
   }
 
-  private renderNode(nodeId: string, frame: CompiledFrame, dataContext: Record<string, unknown>) {
+  private renderNode(
+    nodeId: string,
+    frame: CompiledFrame,
+    dataContext: Record<string, unknown>,
+    frameName: FrameName
+  ) {
     const node = this.artifact?.runtime.nodes[nodeId];
     if (!node || node.type === 'template') {
       return nothing;
     }
 
     if (node.type === 'repeater') {
-      return this.renderRepeater(nodeId, node, frame, dataContext);
+      return this.renderRepeater(nodeId, node, frame, dataContext, frameName);
     }
 
     const tag =
@@ -187,7 +199,7 @@ export class CompiledCanvas extends LitElement {
     const placement = frame.placements[nodeId];
     const style = {
       gridArea: placement?.area,
-      ...resolveStyler(node.props?.styler, this.activeFrame),
+      ...resolveStyler(node.props?.styler, frameName),
     };
 
     const classes = classMap(
@@ -199,12 +211,17 @@ export class CompiledCanvas extends LitElement {
 
     return staticHtml`
       <${tagName} class=${classes} style=${styleMap(style)}>
-        ${this.renderContent(node, frame, dataContext)}
+        ${this.renderContent(node, frame, dataContext, frameName)}
       </${tagName}>
     `;
   }
 
-  private renderContent(node: CompiledNode, frame: CompiledFrame, dataContext: Record<string, unknown>) {
+  private renderContent(
+    node: CompiledNode,
+    frame: CompiledFrame,
+    dataContext: Record<string, unknown>,
+    frameName: FrameName
+  ) {
     if (node.type === 'text') {
       const boundText = getPathValue(dataContext, node.props?.textPath);
       return boundText ?? node.props?.text ?? '';
@@ -218,7 +235,7 @@ export class CompiledCanvas extends LitElement {
       return nothing;
     }
 
-    return node.children.map((childId) => this.renderNode(childId, frame, dataContext));
+    return node.children.map((childId) => this.renderNode(childId, frame, dataContext, frameName));
   }
 
   /**
@@ -232,7 +249,8 @@ export class CompiledCanvas extends LitElement {
     nodeId: string,
     node: CompiledNode,
     frame: CompiledFrame,
-    dataContext: Record<string, unknown>
+    dataContext: Record<string, unknown>,
+    frameName: FrameName
   ) {
     const items =
       (Array.isArray(node.props?.items) && node.props?.items) ||
@@ -249,7 +267,7 @@ export class CompiledCanvas extends LitElement {
     const placement = frame.placements[nodeId];
     const style = {
       gridArea: placement?.area,
-      ...resolveStyler(node.props?.styler, this.activeFrame),
+      ...resolveStyler(node.props?.styler, frameName),
     };
 
     const classes = classMap(
@@ -273,7 +291,7 @@ export class CompiledCanvas extends LitElement {
             return html`
               <div class=${itemClasses}>
                 ${templateNode.children?.map((childId) =>
-                  this.renderNode(childId, frame, item as Record<string, unknown>)
+                  this.renderNode(childId, frame, item as Record<string, unknown>, frameName)
                 )}
               </div>
             `;
