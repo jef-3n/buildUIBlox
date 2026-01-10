@@ -6,6 +6,8 @@ import type { FrameName } from './frame-types';
 import { elementPathPattern } from './paths';
 import { normalizeFrameScopedPath, setPathValue } from './path-edits';
 import type { CompiledArtifact } from './compiled-canvas';
+import type { ObservationCategory, ObservationPacket } from './telemetry';
+import './telemetry-sniffer';
 
 type UiState = {
   activeFrame: FrameName;
@@ -32,6 +34,8 @@ type HostEvent =
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
+  private observationSequence = 0;
+
   @state()
   private hostState: HostState = {
     ui: { activeFrame: 'desktop' },
@@ -113,7 +117,14 @@ export class NuwaHost extends LitElement {
         </slot>
       </main>
       <div class="drawer right">
-        <slot name="right"><div class="stub">Right drawer</div></slot>
+        <slot name="right">
+          <telemetry-sniffer
+            .activeFrame=${activeFrame}
+            .selectionPath=${this.hostState.selection.path ?? ''}
+            .compiledId=${this.hostState.artifact.compiledId}
+            .draftId=${this.hostState.artifact.draftId}
+          ></telemetry-sniffer>
+        </slot>
       </div>
       <div class="drawer bottom">
         <slot name="bottom"><div class="stub">Bottom drawer</div></slot>
@@ -164,11 +175,68 @@ export class NuwaHost extends LitElement {
   }
 
   private dispatch(event: HostEvent) {
+    const prevState = this.hostState;
     const nextState = hostReducer(this.hostState, event);
     if (nextState === this.hostState) {
       return;
     }
     this.hostState = nextState;
+    this.emitObservationPacket(event, nextState, prevState);
+  }
+
+  private emitObservationPacket(event: HostEvent, nextState: HostState, prevState: HostState) {
+    const category = this.resolveObservationCategory(event);
+    const packet: ObservationPacket = {
+      id: `${Date.now()}-${this.observationSequence + 1}`,
+      sequence: ++this.observationSequence,
+      emittedAt: new Date().toISOString(),
+      source: 'nuwa-host',
+      category,
+      event: event.type,
+      payload: this.buildObservationPayload(event, nextState, prevState),
+    };
+    this.dispatchEvent(
+      new CustomEvent<ObservationPacket>('OBSERVATION_PACKET', {
+        detail: packet,
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  private resolveObservationCategory(event: HostEvent): ObservationCategory {
+    switch (event.type) {
+      case 'SELECTION_SET':
+        return 'selection';
+      case 'ARTIFACT_PATH_EDIT':
+        return 'artifact';
+      default:
+        return 'pipeline';
+    }
+  }
+
+  private buildObservationPayload(event: HostEvent, nextState: HostState, prevState: HostState) {
+    switch (event.type) {
+      case 'UI_SET_FRAME':
+        return {
+          frame: nextState.ui.activeFrame,
+          previousFrame: prevState.ui.activeFrame,
+        };
+      case 'SELECTION_SET':
+        return {
+          path: nextState.selection.path,
+          frame: nextState.ui.activeFrame,
+        };
+      case 'ARTIFACT_PATH_EDIT':
+        return {
+          path: event.payload.path,
+          frame: event.payload.frame ?? nextState.ui.activeFrame,
+          compiledId: nextState.artifact.compiledId,
+          draftId: nextState.artifact.draftId,
+        };
+      default:
+        return {};
+    }
   }
 }
 
