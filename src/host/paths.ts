@@ -1,4 +1,4 @@
-import type { FrameName } from './compiled-canvas';
+import type { FrameName } from './frame-types';
 
 export type ElementPath = `elements.${string}`;
 export type FramePath = `frames.${FrameName}`;
