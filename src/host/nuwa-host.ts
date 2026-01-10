@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
+import './selection-metadata';
 import { sampleCompiledArtifact } from './sample-compiled';
 import type { FrameName } from './compiled-canvas';
 import { elementPathPattern } from './paths';
@@ -104,7 +105,13 @@ export class NuwaHost extends LitElement {
         </slot>
       </main>
       <div class="drawer right">
-        <slot name="right"><div class="stub">Right drawer</div></slot>
+        <slot name="right">
+          <selection-metadata
+            .artifact=${sampleCompiledArtifact}
+            .selectedPath=${this.hostState.selection.path}
+            .activeFrame=${activeFrame}
+          ></selection-metadata>
+        </slot>
       </div>
       <div class="drawer bottom">
         <slot name="bottom"><div class="stub">Bottom drawer</div></slot>
