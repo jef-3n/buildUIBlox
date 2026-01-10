@@ -1,3 +1,10 @@
-Get started by customizing your environment (defined in the .idx/dev.nix file) with the tools and IDE extensions you'll need for your project!
+# nuwaBuilder (Scaffold)
 
-Learn more at https://developers.google.com/idx/guides/customize-idx-env
+Initial scaffold aligned to nuwaBuilder + nuwaBloc documentation.
+
+## Scripts
+- `npm run dev` – local dev
+- `npm run build` – increments version and builds
+
+## Versioning
+Version is incremented at build-time using timestamp-based semantic build numbers.
