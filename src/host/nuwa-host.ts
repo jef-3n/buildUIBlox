@@ -1,10 +1,37 @@
 import { LitElement, html, css } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
 import { sampleCompiledArtifact } from './sample-compiled';
+import type { FrameName } from './compiled-canvas';
+import { elementPathPattern } from './paths';
+
+type UiState = {
+  activeFrame: FrameName;
+};
+
+type SelectionState = {
+  path?: string;
+};
+
+type HostState = {
+  ui: UiState;
+  selection: SelectionState;
+  selectionsByFrame: Record<FrameName, string | undefined>;
+};
+
+type HostEvent =
+  | { type: 'UI_SET_FRAME'; payload: { frame: FrameName } }
+  | { type: 'SELECTION_SET'; payload: { path: string } };
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
+  @state()
+  private hostState: HostState = {
+    ui: { activeFrame: 'desktop' },
+    selection: { path: undefined },
+    selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
+  };
+
   static styles = css`
     :host {
       display: grid;
@@ -57,9 +84,11 @@ export class NuwaHost extends LitElement {
   `;
 
   render() {
+    const activeFrame = this.hostState.ui.activeFrame;
     return html`
       <div class="drawer top">
         <slot name="top"><div class="stub">Top drawer</div></slot>
+        ${this.renderFrameToggle(activeFrame)}
       </div>
       <div class="drawer left">
         <slot name="left"><div class="stub">Left drawer</div></slot>
@@ -68,7 +97,9 @@ export class NuwaHost extends LitElement {
         <slot>
           <compiled-canvas
             .artifact=${sampleCompiledArtifact}
-            activeFrame="desktop"
+            .activeFrame=${activeFrame}
+            .selectedPath=${this.hostState.selection.path}
+            @SELECTION_SET=${this.handleSelectionSet}
           ></compiled-canvas>
         </slot>
       </main>
@@ -80,4 +111,73 @@ export class NuwaHost extends LitElement {
       </div>
     `;
   }
+
+  private renderFrameToggle(activeFrame: FrameName) {
+    const frames: FrameName[] = ['desktop', 'tablet', 'mobile'];
+    return html`
+      <div class="stub">
+        Frame:
+        ${frames.map(
+          (frame) => html`
+            <button
+              @click=${() => this.dispatch({
+                type: 'UI_SET_FRAME',
+                payload: { frame },
+              })}
+              ?disabled=${activeFrame === frame}
+            >
+              ${frame}
+            </button>
+          `
+        )}
+      </div>
+    `;
+  }
+
+  private handleSelectionSet(event: CustomEvent<{ path: string }>) {
+    event.stopPropagation();
+    const path = event.detail?.path;
+    if (!path || !elementPathPattern.test(path)) {
+      return;
+    }
+    this.dispatch({ type: 'SELECTION_SET', payload: { path } });
+  }
+
+  private dispatch(event: HostEvent) {
+    const nextState = hostReducer(this.hostState, event);
+    if (nextState === this.hostState) {
+      return;
+    }
+    this.hostState = nextState;
+  }
 }
+
+const hostReducer = (state: HostState, event: HostEvent): HostState => {
+  switch (event.type) {
+    case 'UI_SET_FRAME': {
+      if (state.ui.activeFrame === event.payload.frame) {
+        return state;
+      }
+      const nextFrame = event.payload.frame;
+      const nextSelection =
+        state.selectionsByFrame[nextFrame] ?? state.selection.path;
+      return {
+        ...state,
+        ui: { activeFrame: nextFrame },
+        selection: { path: nextSelection },
+      };
+    }
+    case 'SELECTION_SET': {
+      return {
+        ...state,
+        selection: { path: event.payload.path },
+        selectionsByFrame: {
+          ...state.selectionsByFrame,
+          [state.ui.activeFrame]: event.payload.path,
+        },
+      };
+    }
+    default:
+      return state;
+  }
+};

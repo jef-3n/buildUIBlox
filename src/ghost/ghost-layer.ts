@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
+import { buildElementPath } from '../host/paths';
 
 export type GhostRect = {
   x: number;
@@ -93,7 +94,7 @@ export class GhostLayer extends LitElement {
 
     const target = event.currentTarget as HTMLElement | null;
     const rect = target?.getBoundingClientRect();
-    const path = hotspot.path ?? hotspot.id;
+    const path = hotspot.path ?? buildElementPath(hotspot.id);
 
     this.dispatchEvent(
       new CustomEvent('GHOST_SELECT_ELEMENT', {

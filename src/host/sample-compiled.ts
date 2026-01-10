@@ -43,19 +43,19 @@ export const sampleCompiledArtifact: CompiledArtifact = {
         id: 'header-hotspot',
         rect: { x: 0, y: 0, w: 360, h: 48 },
         emitter: 'OPEN_HEADER_PANEL',
-        path: 'header',
+        path: 'elements.header',
       },
       {
         id: 'hero-hotspot',
         rect: { x: 0, y: 72, w: 640, h: 140 },
         emitter: { type: 'OPEN_HERO_DETAILS', payload: { section: 'hero' } },
-        path: 'hero',
+        path: 'elements.hero',
       },
       {
         id: 'list-hotspot',
         rect: { x: 0, y: 240, w: 640, h: 240 },
         emitter: 'OPEN_CATALOG',
-        path: 'repeater',
+        path: 'elements.repeater',
       },
     ],
     nodes: {
