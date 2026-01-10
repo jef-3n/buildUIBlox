@@ -12,6 +12,21 @@ We've organized the Builder around a "4-Axis Drawer" system. Think of it as keep
 
 * **Center Canvas (The Visual Stage):** This is where the magic happens. It's your main viewport for the nuwaBloc. It’s got this neat **Variable Density Engine** that lets you scale the view from ![][image1] (real size) all the way to ![][image2] (tiny\!).  
   * *Why?* At ![][image1], you check the pixels. At ![][image2], it turns into a "Logic Map," so you can see how events flow across a bunch of components at once. It’s a lifesaver for debugging complex event chains without losing track of where things are.  
+  * **Scale Levels (1–5):** The Canvas always snaps to five discrete zoom levels so behavior is predictable and repeatable.  
+    * **1 (Detail):** 1:1 pixel inspection, full fidelity.  
+    * **2 (Comfort):** Slightly zoomed out for layout tweaks.  
+    * **3 (Structure):** Balanced overview for multi-section editing.  
+    * **4 (Logic):** Emphasizes flow and grouping over pixel precision.  
+    * **5 (Map):** Maximum zoom-out for whole-app topology.  
+  * **Transform Rules:** Scaling is a pure view transform on the canvas stage. We scale around a fixed origin (see grid-origin invariants), and translate in screen space after scaling to keep the active focus stable. No schema coordinates are modified by zooming.  
+  * **Grid-Origin Invariants:**  
+    * The grid origin is anchored at the top-left of the design space and never drifts.  
+    * Scale changes must not introduce fractional drift in the origin; origin stays at integer grid coordinates.  
+    * Panning is additive and reversible, but the origin itself is immutable.  
+  * **Stability Across Scaling & Frame Switching:**  
+    * Switching scale levels does not mutate frame data.  
+    * Switching frames (Desktop/Mobile/etc.) preserves the current zoom level and pan offset.  
+    * Returning to a frame restores the exact pre-existing coordinates for that frame, independent of the current zoom.  
 * **Left Drawer (Library & Composition):** **The Warehouse.**  
   * *What it does:* It’s where all your stuff lives. You can manage nested components and drag-and-drop primitive blocks (like Buttons or Cards) or grab full patterns (like Repeaters) right onto the grid.  
   * *Templates:* Got a layout you love? Save it as a template and drop complex structures in instantly\!  
