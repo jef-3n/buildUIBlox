@@ -113,6 +113,46 @@ The **nuwaBuilder** is a visual IDE for manipulating the nuwaBloc Design State. 
 * **Rollback:** Point the session ID back to the last good snapshot document.  
 * **Storage:** All data is housed in /artifacts/{appId}/public/data/.  
 
+### **5.1 Persistence Paths & Access Rules**
+
+**globalSession**
+
+* **Path:** `/artifacts/{appId}/public/data/globalSession`  
+* **Read:** All surfaces (editor shell, compiler monitors, ghost layer) subscribe for buildStatus, activeSelection, UI state, and draft/compiled pointers.  
+* **Write:** Only the event processor (UI/API) and compiler worker may update this document. Writes MUST be transactional with the draft lock rules in §6.8.  
+
+**Drafts (Design State)**
+
+* **Path:** `/artifacts/{appId}/public/data/drafts/{draftId}`  
+* **Read:** Editor, compiler, and preview runtime.  
+* **Write:** Only via validated event envelopes; UI surfaces never write compiled output.  
+
+**Compiled Artifacts**
+
+* **Path:** `/artifacts/{appId}/public/data/compiled/{compiledId}`  
+* **Read:** Preview runtime, ghost layer, and publish pipelines.  
+* **Write:** Compiler workers only.  
+
+### **5.2 Offline/Error Behavior & Consistency Requirements**
+
+**Offline Behavior**
+
+* When offline, surfaces MUST render from the latest cached Draft and globalSession snapshot.  
+* Offline mutations are queued as event envelopes and replayed in-order on reconnect; direct document writes are forbidden.  
+* If a reconnect detects a schema mismatch or rejected event, the client must halt replay and request a fresh Draft + globalSession sync.  
+
+**Error Behavior**
+
+* Compiler failures MUST set `globalSession.buildStatus=error` and persist an error payload in the session (e.g., `buildError` with code/message).  
+* A failed build MUST NOT overwrite existing compiled artifacts; the last known good compiled output remains the active read target.  
+* Clearing error state requires an explicit event (e.g., `PIPELINE_ABORT_BUILD` or new `PIPELINE_TRIGGER_BUILD`).  
+
+**Consistency Requirements**
+
+* All writes to `globalSession` and Drafts MUST use optimistic concurrency (`updatedAt` and/or Firestore preconditions).  
+* `globalSession.draftId` and `compiled.draftId` must remain aligned (§6.6); any mismatch blocks publish.  
+* The Draft, globalSession, and compiled artifact references are updated atomically by the pipeline (transaction or batched write).  
+
 ## **6\. Rulebook & Enforcement (Authoritative)**
 
 This section is the single source of truth for schema authority, validation, and enforcement. Any subsystem that ingests or emits a nuwaBuilder payload MUST comply with this Rulebook.
@@ -192,6 +232,12 @@ This section is the single source of truth for schema authority, validation, and
   "buildStatus": "idle|compiling|error|success",
   "draftId": "string",
   "compiledId": "string",
+  "draftLock": {
+    "locked": "boolean",
+    "draftId": "string",
+    "lockedAt": "iso-8601",
+    "releasedAt": "iso-8601?"
+  },
   "ui": { "$ref": "uiState.v1" },
   "activeSelection": { "$ref": "activeSelection.v1" },
   "eventCursor": "number",
@@ -388,3 +434,11 @@ Any of the following MUST block writes, builds, or publish operations:
 5. **Ghost Map Drift:** `ghostMap` references node IDs that are absent in the Compiled runtime.  
 6. **Locked Draft Mutation:** `requiresDraftLock=true` event is processed while `buildStatus=compiling`.  
 7. **Unauthorized Actor:** `event.actor.role` not in `human|ai|system` or missing `userId`.
+
+### **6.8 Draft Lock Enforcement (Persisted State)**
+
+* **Persisted Lock:** `globalSession.draftLock` is the single source of truth for pipeline draft locking.  
+* **Lock Acquisition:** `PIPELINE_TRIGGER_BUILD` MUST set `draftLock.locked=true` and `draftLock.draftId=globalSession.draftId` in the same write that flips `buildStatus=compiling`.  
+* **Lock Enforcement:** While locked, any event that would mutate Draft state or update `globalSession.draftId` MUST be rejected.  
+* **Lock Release:** The lock is released only when the pipeline transitions to `buildStatus=idle|error|success` via compiler completion or explicit abort.  
+* **Auditability:** `lockedAt`/`releasedAt` timestamps are mandatory for lock state transitions.
