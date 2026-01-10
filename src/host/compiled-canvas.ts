@@ -4,6 +4,8 @@ import { classMap } from 'lit/directives/class-map.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
+import '../ghost/ghost-layer';
+import type { GhostHotspot } from '../ghost/ghost-layer';
 
 export type FrameName = 'desktop' | 'tablet' | 'mobile';
 
@@ -49,6 +51,7 @@ export type CompiledArtifact = {
       frames: Partial<Record<FrameName, CompiledFrame>>;
     };
     data?: Record<string, unknown>;
+    ghostMap?: GhostHotspot[];
   };
   integrity: { sourceHash: string; compilerVersion: string };
 };
@@ -85,13 +88,19 @@ export class CompiledCanvas extends LitElement {
       height: 100%;
     }
 
+    .frame-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: var(--frame-padding, 24px);
+      box-sizing: border-box;
+    }
+
     .frame {
       display: grid;
       width: 100%;
       height: 100%;
       gap: 16px;
-      padding: 24px;
-      box-sizing: border-box;
     }
 
     .empty-state {
@@ -120,6 +129,9 @@ export class CompiledCanvas extends LitElement {
   @property({ type: String })
   activeFrame: FrameName = 'desktop';
 
+  @property({ type: Boolean, attribute: 'ghost-authority' })
+  ghostAuthority = true;
+
   render() {
     if (!isCompiledArtifact(this.artifact)) {
       return html`<div class="empty-state">Compiled artifact required for runtime rendering.</div>`;
@@ -139,15 +151,23 @@ export class CompiledCanvas extends LitElement {
       gridTemplateAreas: frame.grid.areas.join(' '),
     };
 
+    const ghostMap = this.artifact.runtime.ghostMap ?? [];
+
     return html`
       <style>${this.artifact.css}</style>
-      <section class="frame" style=${styleMap(frameStyles)}>
-        ${repeat(
-          frame.order,
-          (nodeId) => nodeId,
-          (nodeId) => this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {})
-        )}
-      </section>
+      <div class="frame-wrapper">
+        <section class="frame" style=${styleMap(frameStyles)}>
+          ${repeat(
+            frame.order,
+            (nodeId) => nodeId,
+            (nodeId) => this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {})
+          )}
+        </section>
+        <ghost-layer
+          .ghostMap=${ghostMap}
+          .interactionAuthority=${this.ghostAuthority}
+        ></ghost-layer>
+      </div>
     `;
   }
 
