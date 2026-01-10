@@ -26,6 +26,20 @@ export type GhostHotspot = {
   path?: string;
 };
 
+export type GhostSelectDetail = {
+  path: string;
+  rect?: DOMRect;
+  hotspotId: string;
+};
+
+export type GhostTriggerDetail = {
+  type: string;
+  payload?: unknown;
+  path: string;
+  rect?: DOMRect;
+  hotspotId: string;
+};
+
 @customElement('ghost-layer')
 export class GhostLayer extends LitElement {
   static styles = css`
@@ -89,6 +103,8 @@ export class GhostLayer extends LitElement {
 
   private handleHotspotClick(event: MouseEvent, hotspot: GhostHotspot) {
     if (!this.interactionAuthority) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
 
@@ -96,12 +112,15 @@ export class GhostLayer extends LitElement {
     const rect = target?.getBoundingClientRect();
     const path = hotspot.path ?? buildElementPath(hotspot.id);
 
+    const selectionDetail: GhostSelectDetail = {
+      path,
+      rect,
+      hotspotId: hotspot.id,
+    };
+
     this.dispatchEvent(
-      new CustomEvent('GHOST_SELECT_ELEMENT', {
-        detail: {
-          path,
-          rect,
-        },
+      new CustomEvent<GhostSelectDetail>('GHOST_SELECT_ELEMENT', {
+        detail: selectionDetail,
         bubbles: true,
         composed: true,
       })
@@ -115,12 +134,17 @@ export class GhostLayer extends LitElement {
     const payload =
       typeof hotspot.emitter === 'string' ? hotspot.payload : hotspot.emitter.payload;
 
+    const triggerDetail: GhostTriggerDetail = {
+      type,
+      payload,
+      path,
+      rect,
+      hotspotId: hotspot.id,
+    };
+
     this.dispatchEvent(
-      new CustomEvent('GHOST_HOTSPOT_TRIGGER', {
-        detail: {
-          type,
-          payload,
-        },
+      new CustomEvent<GhostTriggerDetail>('GHOST_HOTSPOT_TRIGGER', {
+        detail: triggerDetail,
         bubbles: true,
         composed: true,
       })

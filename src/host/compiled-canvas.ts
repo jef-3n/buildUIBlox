@@ -5,7 +5,7 @@ import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import '../ghost/ghost-layer';
-import type { GhostHotspot } from '../ghost/ghost-layer';
+import type { GhostHotspot, GhostSelectDetail, GhostTriggerDetail } from '../ghost/ghost-layer';
 import { getElementIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
 import type { FrameName } from './frame-types';
@@ -56,6 +56,9 @@ export type CompiledArtifact = {
   };
   integrity: { sourceHash: string; compilerVersion: string };
 };
+
+type GhostSelectionEventDetail = GhostSelectDetail & { source: 'ghost' };
+type GhostTriggerEventEnvelope = GhostTriggerDetail & { source: 'ghost' };
 
 const isCompiledArtifact = (artifact?: CompiledArtifact): artifact is CompiledArtifact => {
   return Boolean(artifact && artifact.schemaVersion === 'compiled.v1' && artifact.runtime);
@@ -166,6 +169,7 @@ export class CompiledCanvas extends LitElement {
           .ghostMap=${ghostMap}
           .interactionAuthority=${this.ghostAuthority}
           @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
+          @GHOST_HOTSPOT_TRIGGER=${this.handleGhostTrigger}
         ></ghost-layer>
       </div>
     `;
@@ -298,17 +302,35 @@ export class CompiledCanvas extends LitElement {
     return getElementIdFromPath(this.selectedPath) === nodeId;
   }
 
-  private handleGhostSelection(event: CustomEvent<{ path: string }>) {
+  private handleGhostSelection(event: CustomEvent<GhostSelectDetail>) {
     event.stopPropagation();
-    const path = event.detail.path;
+    if (!this.ghostAuthority) {
+      return;
+    }
+    const { path, rect, hotspotId } = event.detail;
     if (path) {
       this.dispatchEvent(
-        new CustomEvent('SELECTION_SET', {
-          detail: { path },
+        new CustomEvent<GhostSelectionEventDetail>('SELECTION_SET', {
+          detail: { path, rect, hotspotId, source: 'ghost' },
           bubbles: true,
           composed: true,
         })
       );
     }
+  }
+
+  private handleGhostTrigger(event: CustomEvent<GhostTriggerDetail>) {
+    event.stopPropagation();
+    if (!this.ghostAuthority) {
+      return;
+    }
+    const { type, payload, path, rect, hotspotId } = event.detail;
+    this.dispatchEvent(
+      new CustomEvent<GhostTriggerEventEnvelope>('GHOST_HOTSPOT_TRIGGER', {
+        detail: { type, payload, path, rect, hotspotId, source: 'ghost' },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 }
