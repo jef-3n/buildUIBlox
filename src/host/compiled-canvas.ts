@@ -12,8 +12,8 @@ import type {
   GhostEditDetail,
 } from '../ghost/ghost-layer';
 import {
-  GHOST_MAP_EDIT,
   HOST_EVENT_ENVELOPE_EVENT,
+  GHOST_RESIZE_FRAME,
   createHostEventEnvelope,
 } from '../contracts/event-envelope';
 import { getNodeIdFromPath } from './paths';
@@ -125,6 +125,9 @@ export class CompiledCanvas extends LitElement {
   @property({ type: Boolean, attribute: 'ghost-edit-mode' })
   ghostEditMode = false;
 
+  @property({ type: Boolean, attribute: 'ghost-draw-mode' })
+  ghostDrawMode = false;
+
   @property({ type: String, attribute: false })
   selectedPath?: string;
 
@@ -171,6 +174,10 @@ export class CompiledCanvas extends LitElement {
             .ghostMap=${ghostMap}
             .interactionAuthority=${this.ghostAuthority}
             .editMode=${this.ghostEditMode}
+            .drawMode=${this.ghostDrawMode}
+            .scale=${this.scale}
+            .activeFrame=${resolvedFrameName}
+            .selectedPath=${this.selectedPath}
             @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
             @GHOST_HOTSPOT_TRIGGER=${this.handleGhostTrigger}
             @GHOST_EDIT_ELEMENT=${this.handleGhostEdit}
@@ -365,13 +372,16 @@ export class CompiledCanvas extends LitElement {
     if (!this.ghostAuthority) {
       return;
     }
-    const { path, rect, frame, hotspotId } = event.detail;
-    if (!rect) {
-      return;
-    }
+    const { action, hotspot, rect } = event.detail;
     const envelope = createHostEventEnvelope(
-      GHOST_MAP_EDIT,
-      { path, rect, frame, hotspotId },
+      GHOST_RESIZE_FRAME,
+      {
+        action,
+        hotspot: {
+          ...hotspot,
+          rect,
+        },
+      },
       'ghost-layer'
     );
     this.dispatchEvent(

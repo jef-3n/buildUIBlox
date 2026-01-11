@@ -29,6 +29,7 @@ export const PIPELINE_TRIGGER_BUILD = 'PIPELINE_TRIGGER_BUILD' as const;
 export const PIPELINE_ABORT_BUILD = 'PIPELINE_ABORT_BUILD' as const;
 export const PIPELINE_PUBLISH_VERSION = 'PIPELINE_PUBLISH_VERSION' as const;
 export const GHOST_MAP_EDIT = 'ghostMap.edit' as const;
+export const GHOST_RESIZE_FRAME = 'ghostMap.resizeFrame' as const;
 export const BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY =
   'builderUi.bootstrap.toggleRegistry' as const;
 export const BUILDER_UI_BOOTSTRAP_PUBLISH = 'builderUi.bootstrap.publish' as const;
@@ -58,6 +59,7 @@ export type HostEventType =
   | typeof PIPELINE_ABORT_BUILD
   | typeof PIPELINE_PUBLISH_VERSION
   | typeof GHOST_MAP_EDIT
+  | typeof GHOST_RESIZE_FRAME
   | 'ghost.trigger'
   | typeof WAREHOUSE_ADD_INTENT
   | typeof WAREHOUSE_MOVE_INTENT
@@ -67,6 +69,29 @@ export type HostEventType =
   | typeof BUILDER_UI_BOOTSTRAP_VERSION_PIN;
 
 type BuilderUiRegistryKey = 'local' | 'remote';
+
+export type GhostEmitterPayload =
+  | string
+  | {
+      type: string;
+      payload?: unknown;
+    };
+
+export type GhostHotspotPayload = {
+  id: string;
+  rect: DOMRect;
+  path?: string;
+  frame?: FrameName;
+  emitter?: GhostEmitterPayload;
+  payload?: unknown;
+};
+
+export type GhostHotspotEditAction = 'draw' | 'resize' | 'update';
+
+export type GhostHotspotEditPayload = {
+  action: GhostHotspotEditAction;
+  hotspot: GhostHotspotPayload;
+};
 
 export type HostEventPayloadMap = {
   'ui.setFrame': { frame: FrameName };
@@ -97,12 +122,8 @@ export type HostEventPayloadMap = {
     compiledId?: string;
     draftId?: string;
   };
-  [GHOST_MAP_EDIT]: {
-    path: string;
-    frame?: FrameName;
-    rect: DOMRect;
-    hotspotId: string;
-  };
+  [GHOST_MAP_EDIT]: GhostHotspotEditPayload;
+  [GHOST_RESIZE_FRAME]: GhostHotspotEditPayload;
   'ghost.trigger': {
     type: string;
     payload?: unknown;
@@ -179,6 +200,31 @@ const isDomRect = (value: unknown): value is DOMRect =>
   hasNumber(value.width) &&
   hasNumber(value.height);
 
+const GHOST_EDIT_ACTIONS: GhostHotspotEditAction[] = ['draw', 'resize', 'update'];
+
+const isGhostEditAction = (value: unknown): value is GhostHotspotEditAction =>
+  typeof value === 'string' && GHOST_EDIT_ACTIONS.includes(value as GhostHotspotEditAction);
+
+const isGhostEmitterPayload = (value: unknown): value is GhostEmitterPayload =>
+  typeof value === 'string' || (isRecord(value) && hasString(value.type));
+
+const isGhostHotspotPayload = (value: unknown): value is GhostHotspotPayload => {
+  if (!isRecord(value)) return false;
+  if (!hasString(value.id)) return false;
+  if (!isDomRect(value.rect)) return false;
+  if (typeof value.path !== 'undefined' && !hasString(value.path)) return false;
+  if (typeof value.frame !== 'undefined' && !isFrameName(value.frame)) return false;
+  if (typeof value.emitter !== 'undefined' && !isGhostEmitterPayload(value.emitter)) {
+    return false;
+  }
+  return true;
+};
+
+const isGhostHotspotEditPayload = (value: unknown): value is GhostHotspotEditPayload => {
+  if (!isRecord(value)) return false;
+  return isGhostEditAction(value.action) && isGhostHotspotPayload(value.hotspot);
+};
+
 const isBuilderUiRegistryKey = (value: unknown): value is BuilderUiRegistryKey =>
   typeof value === 'string' && BUILDER_UI_REGISTRY_KEYS.includes(value as BuilderUiRegistryKey);
 
@@ -248,12 +294,8 @@ const hasHostEventPayload = (
         (typeof payload.draftId === 'undefined' || hasString(payload.draftId))
       );
     case GHOST_MAP_EDIT:
-      return (
-        hasString(payload.path) &&
-        hasString(payload.hotspotId) &&
-        isDomRect(payload.rect) &&
-        (typeof payload.frame === 'undefined' || isFrameName(payload.frame))
-      );
+    case GHOST_RESIZE_FRAME:
+      return isGhostHotspotEditPayload(payload);
     case 'ghost.trigger':
       return hasString(payload.type) && hasString(payload.path) && hasString(payload.hotspotId);
     case WAREHOUSE_ADD_INTENT:

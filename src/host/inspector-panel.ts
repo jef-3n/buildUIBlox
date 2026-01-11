@@ -1,13 +1,15 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import type { CompiledArtifact, CompiledNode } from './compiled-canvas';
 import type { DraftArtifact } from './draft-contract';
 import { getNodeIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
 import type { FrameName } from './frame-types';
 import './selection-metadata';
+import type { GhostHotspot } from '../ghost/ghost-layer';
 import {
   BINDING_UPDATE_PROP,
+  GHOST_MAP_EDIT,
   HOST_EVENT_ENVELOPE_EVENT,
   STYLER_UPDATE_PROP,
   createHostEventEnvelope,
@@ -53,6 +55,21 @@ export class InspectorPanel extends LitElement {
   @property({ type: Boolean, attribute: 'ghost-edit-mode' })
   ghostEditMode = false;
 
+  @property({ type: Boolean, attribute: 'ghost-draw-mode' })
+  ghostDrawMode = false;
+
+  @state()
+  private selectedHotspotId?: string;
+
+  @state()
+  private emitterType = '';
+
+  @state()
+  private emitterPayload = '';
+
+  @state()
+  private payloadError?: string;
+
   static styles = css`
     :host {
       display: flex;
@@ -94,7 +111,9 @@ export class InspectorPanel extends LitElement {
     }
 
     input,
-    button {
+    button,
+    select,
+    textarea {
       font: inherit;
     }
 
@@ -110,6 +129,34 @@ export class InspectorPanel extends LitElement {
       outline: 2px solid rgba(59, 130, 246, 0.35);
       border-color: #93c5fd;
       background: #ffffff;
+    }
+
+    select,
+    textarea {
+      border: 1px solid #cbd5f5;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.85rem;
+      background: #f8fafc;
+    }
+
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+      font-family: ui-monospace, 'SFMono-Regular', SFMono-Regular, Menlo, monospace;
+      font-size: 0.8rem;
+    }
+
+    button {
+      border: 1px solid #cbd5f5;
+      border-radius: 6px;
+      padding: 6px 10px;
+      background: #ffffff;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #f1f5f9;
     }
 
     .ghost-toggle {
@@ -130,10 +177,17 @@ export class InspectorPanel extends LitElement {
       color: #64748b;
       font-size: 0.85rem;
     }
+
+    .error {
+      color: #b91c1c;
+      font-size: 0.75rem;
+    }
   `;
 
   render() {
     const nodeId = this.getSelectionNode()?.id;
+    const ghostMap = this.getGhostMap();
+    const activeHotspot = this.getActiveHotspot();
     return html`
       <selection-metadata
         .artifact=${this.artifact}
@@ -162,6 +216,59 @@ export class InspectorPanel extends LitElement {
             @change=${this.handleGhostToggle}
           />
         </label>
+        <label class="ghost-toggle">
+          <span>Enable hotspot drawing</span>
+          <input
+            type="checkbox"
+            .checked=${this.ghostDrawMode}
+            @change=${this.handleGhostDrawToggle}
+          />
+        </label>
+      </section>
+      <section class="section">
+        <h3>Hotspot emitters</h3>
+        ${ghostMap.length
+          ? html`
+              <div class="fields">
+                <label>
+                  <span>Hotspot</span>
+                  <select @change=${this.handleHotspotSelection}>
+                    ${ghostMap.map(
+                      (hotspot) => html`
+                        <option
+                          value=${hotspot.id}
+                          ?selected=${this.selectedHotspotId === hotspot.id}
+                        >
+                          ${hotspot.id}
+                        </option>
+                      `
+                    )}
+                  </select>
+                </label>
+                <label>
+                  <span>Emitter type</span>
+                  <input
+                    type="text"
+                    .value=${this.emitterType}
+                    placeholder="OPEN_PANEL"
+                    @input=${this.handleEmitterTypeInput}
+                  />
+                </label>
+                <label>
+                  <span>Emitter payload (JSON)</span>
+                  <textarea
+                    placeholder='{"key":"value"}'
+                    .value=${this.emitterPayload}
+                    @input=${this.handleEmitterPayloadInput}
+                  ></textarea>
+                </label>
+                ${this.payloadError ? html`<div class="error">${this.payloadError}</div>` : ''}
+                <button @click=${this.handleEmitterApply} ?disabled=${!activeHotspot}>
+                  Apply hotspot updates
+                </button>
+              </div>
+            `
+          : html`<div class="empty">No hotspots available for this frame.</div>`}
       </section>
     `;
   }
@@ -226,6 +333,93 @@ export class InspectorPanel extends LitElement {
     );
   }
 
+  private handleGhostDrawToggle(event: Event) {
+    const target = event.currentTarget as HTMLInputElement | null;
+    if (!target) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent('INSPECTOR_GHOST_DRAW_TOGGLE', {
+        detail: { enabled: target.checked },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  private handleHotspotSelection(event: Event) {
+    const target = event.currentTarget as HTMLSelectElement | null;
+    if (!target) {
+      return;
+    }
+    const hotspot = this.getGhostMap().find((entry) => entry.id === target.value);
+    if (hotspot) {
+      this.setActiveHotspot(hotspot);
+    }
+  }
+
+  private handleEmitterTypeInput(event: Event) {
+    const target = event.currentTarget as HTMLInputElement | null;
+    if (!target) {
+      return;
+    }
+    this.emitterType = target.value;
+    this.payloadError = undefined;
+  }
+
+  private handleEmitterPayloadInput(event: Event) {
+    const target = event.currentTarget as HTMLTextAreaElement | null;
+    if (!target) {
+      return;
+    }
+    this.emitterPayload = target.value;
+    this.payloadError = undefined;
+  }
+
+  private handleEmitterApply() {
+    const hotspot = this.getActiveHotspot();
+    if (!hotspot) {
+      return;
+    }
+    const emitterType = this.emitterType.trim();
+    const payloadText = this.emitterPayload.trim();
+    if (!emitterType && payloadText) {
+      this.payloadError = 'Provide an emitter type before adding payload JSON.';
+      return;
+    }
+    let parsedPayload: unknown = undefined;
+    if (payloadText) {
+      try {
+        parsedPayload = JSON.parse(payloadText);
+      } catch {
+        this.payloadError = 'Payload must be valid JSON.';
+        return;
+      }
+    }
+    const emitter =
+      emitterType && parsedPayload !== undefined
+        ? { type: emitterType, payload: parsedPayload }
+        : emitterType || undefined;
+    const rect = new DOMRect(
+      hotspot.rect.x,
+      hotspot.rect.y,
+      hotspot.rect.w,
+      hotspot.rect.h
+    );
+    const payload: HostEventPayloadMap[typeof GHOST_MAP_EDIT] = {
+      action: 'update',
+      hotspot: {
+        id: hotspot.id,
+        rect,
+        path: hotspot.path,
+        frame: hotspot.frame,
+        emitter,
+        payload: emitter ? undefined : parsedPayload,
+      },
+    };
+    this.emitHostEvent(GHOST_MAP_EDIT, payload);
+  }
+
   private emitHostEvent<T extends HostEventType>(
     type: T,
     payload: HostEventPayloadMap[T]
@@ -250,6 +444,70 @@ export class InspectorPanel extends LitElement {
       return null;
     }
     return { id, node };
+  }
+
+  protected updated(changedProperties: Map<PropertyKey, unknown>) {
+    if (
+      changedProperties.has('selectedPath') ||
+      changedProperties.has('activeFrame') ||
+      changedProperties.has('artifact') ||
+      changedProperties.has('draft')
+    ) {
+      this.syncActiveHotspot();
+    }
+  }
+
+  private getGhostMap(): GhostHotspot[] {
+    const ghostMap = this.draft?.assets?.ghostMap ?? this.artifact?.runtime?.ghostMap ?? [];
+    return ghostMap.filter(
+      (hotspot) => !hotspot.frame || hotspot.frame === this.activeFrame
+    );
+  }
+
+  private getActiveHotspot(): GhostHotspot | undefined {
+    if (!this.selectedHotspotId) {
+      return undefined;
+    }
+    return this.getGhostMap().find((entry) => entry.id === this.selectedHotspotId);
+  }
+
+  private syncActiveHotspot() {
+    const ghostMap = this.getGhostMap();
+    if (!ghostMap.length) {
+      this.selectedHotspotId = undefined;
+      this.emitterType = '';
+      this.emitterPayload = '';
+      return;
+    }
+    const fromSelection = this.selectedPath
+      ? ghostMap.find((entry) => entry.path === this.selectedPath)
+      : undefined;
+    const current =
+      this.selectedHotspotId &&
+      ghostMap.find((entry) => entry.id === this.selectedHotspotId);
+    const next = fromSelection ?? current ?? ghostMap[0];
+    if (!next) {
+      return;
+    }
+    this.setActiveHotspot(next);
+  }
+
+  private setActiveHotspot(hotspot: GhostHotspot) {
+    this.selectedHotspotId = hotspot.id;
+    const { emitter, payload } = hotspot;
+    if (typeof emitter === 'string') {
+      this.emitterType = emitter;
+      this.emitterPayload =
+        payload === undefined ? '' : JSON.stringify(payload, null, 2);
+    } else if (emitter) {
+      this.emitterType = emitter.type;
+      this.emitterPayload =
+        emitter.payload === undefined ? '' : JSON.stringify(emitter.payload, null, 2);
+    } else {
+      this.emitterType = '';
+      this.emitterPayload = '';
+    }
+    this.payloadError = undefined;
   }
 }
 
