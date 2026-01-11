@@ -8,7 +8,12 @@ import {
   type GlobalSessionUpdate,
   isCompatibleGlobalSessionSnapshot,
 } from '../contracts/global-session';
-import type { ActiveSurface } from '../contracts/ui-state';
+import {
+  DEFAULT_UI_SCALE,
+  createUiDrawersState,
+  type ActiveSurface,
+  type UiDrawersState,
+} from '../contracts/ui-state';
 import { GlobalSessionStore } from './global-session-store';
 
 export type PresenceState = GlobalPresenceState;
@@ -39,6 +44,8 @@ const buildPresenceEntry = (
   activeFrame: update.activeFrame,
   selectionPath: update.selectionPath,
   activeSurface: update.activeSurface,
+  scale: update.scale,
+  drawers: update.drawers,
   lastSeenAt: update.updatedAt,
   isLocal,
 });
@@ -98,7 +105,9 @@ const buildChangeSet = (prev: SharedSessionSnapshot, next: SharedSessionSnapshot
   session:
     prev.activeFrame !== next.activeFrame ||
     prev.selectionPath !== next.selectionPath ||
-    prev.activeSurface !== next.activeSurface,
+    prev.activeSurface !== next.activeSurface ||
+    prev.scale !== next.scale ||
+    prev.drawers !== next.drawers,
   surface: prev.activeSurface !== next.activeSurface,
   pipeline: hasPipelineChanged(prev.pipeline, next.pipeline),
   draftPointers: hasDraftPointersChanged(prev, next),
@@ -135,6 +144,8 @@ export class SharedSession extends EventTarget {
     activeFrame: FrameName;
     selectionPath?: string;
     activeSurface: ActiveSurface;
+    scale?: number;
+    drawers?: UiDrawersState;
     appId?: string;
     draftId?: string;
     compiledId?: string;
@@ -144,6 +155,8 @@ export class SharedSession extends EventTarget {
     const updatedAt = new Date().toISOString();
     const draftId = initial.draftId;
     const compiledId = initial.compiledId;
+    const scale = initial.scale ?? DEFAULT_UI_SCALE;
+    const drawers = initial.drawers ?? createUiDrawersState();
     this.state = {
       schemaVersion: GLOBAL_SESSION_SCHEMA_VERSION,
       sessionId,
@@ -152,6 +165,8 @@ export class SharedSession extends EventTarget {
       activeFrame: initial.activeFrame,
       selectionPath: initial.selectionPath,
       activeSurface: initial.activeSurface,
+      scale,
+      drawers,
       draftId,
       compiledId,
       pipeline: {
@@ -180,6 +195,8 @@ export class SharedSession extends EventTarget {
             activeFrame: initial.activeFrame,
             selectionPath: initial.selectionPath,
             activeSurface: initial.activeSurface,
+            scale,
+            drawers,
           },
           true
         ),
@@ -210,6 +227,8 @@ export class SharedSession extends EventTarget {
         | 'activeFrame'
         | 'selectionPath'
         | 'activeSurface'
+        | 'scale'
+        | 'drawers'
         | 'draftId'
         | 'compiledId'
         | 'pipeline'
@@ -223,6 +242,8 @@ export class SharedSession extends EventTarget {
       selectionPath:
         'selectionPath' in partial ? partial.selectionPath : this.state.selectionPath,
       activeSurface: partial.activeSurface ?? this.state.activeSurface,
+      scale: partial.scale ?? this.state.scale,
+      drawers: partial.drawers ?? this.state.drawers,
       draftId: partial.draftId ?? this.state.draftId,
       compiledId: partial.compiledId ?? this.state.compiledId,
       pipeline: partial.pipeline ?? this.state.pipeline,
@@ -234,6 +255,8 @@ export class SharedSession extends EventTarget {
       nextState.activeFrame !== this.state.activeFrame ||
       nextState.selectionPath !== this.state.selectionPath ||
       nextState.activeSurface !== this.state.activeSurface ||
+      nextState.scale !== this.state.scale ||
+      nextState.drawers !== this.state.drawers ||
       nextState.draftId !== this.state.draftId ||
       nextState.compiledId !== this.state.compiledId ||
       nextState.pipeline !== this.state.pipeline ||
@@ -266,6 +289,8 @@ export class SharedSession extends EventTarget {
       activeFrame: nextState.activeFrame,
       selectionPath: nextState.selectionPath,
       activeSurface: nextState.activeSurface,
+      scale: nextState.scale,
+      drawers: nextState.drawers,
       draftId: resolvedDraftId,
       compiledId: resolvedCompiledId,
       pipeline: nextState.pipeline,
@@ -371,6 +396,8 @@ export class SharedSession extends EventTarget {
       activeFrame: snapshot.activeFrame,
       selectionPath: snapshot.selectionPath,
       activeSurface: snapshot.activeSurface,
+      scale: snapshot.scale,
+      drawers: snapshot.drawers,
       draftId: snapshot.draftId,
       compiledId: snapshot.compiledId,
       compiled: snapshot.compiled,
@@ -403,6 +430,8 @@ export class SharedSession extends EventTarget {
           activeFrame: this.state.activeFrame,
           selectionPath: this.state.selectionPath,
           activeSurface: this.state.activeSurface,
+          scale: this.state.scale,
+          drawers: this.state.drawers,
         },
         true
       );
@@ -429,6 +458,8 @@ export class SharedSession extends EventTarget {
       activeFrame: snapshot.activeFrame,
       selectionPath: snapshot.selectionPath,
       activeSurface: snapshot.activeSurface,
+      scale: snapshot.scale,
+      drawers: snapshot.drawers,
       draftId: nextDraftId,
       compiledId: nextCompiledId,
       compiled: nextCompiledShadow,
@@ -471,6 +502,8 @@ export class SharedSession extends EventTarget {
           activeFrame: this.state.activeFrame,
           selectionPath: this.state.selectionPath,
           activeSurface: this.state.activeSurface,
+          scale: this.state.scale,
+          drawers: this.state.drawers,
         },
         true
       );
@@ -498,6 +531,8 @@ export class SharedSession extends EventTarget {
       activeFrame: update.activeFrame,
       selectionPath: update.selectionPath,
       activeSurface: update.activeSurface,
+      scale: update.scale,
+      drawers: update.drawers,
       draftId: nextDraftId,
       compiledId: nextCompiledId,
       compiled: nextCompiledShadow,
@@ -521,6 +556,8 @@ export const createSharedSession = (initial: {
   activeFrame: FrameName;
   selectionPath?: string;
   activeSurface: ActiveSurface;
+  scale?: number;
+  drawers?: UiDrawersState;
   appId?: string;
   draftId?: string;
   compiledId?: string;

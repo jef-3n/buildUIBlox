@@ -65,6 +65,13 @@ export class CompiledCanvas extends LitElement {
       box-sizing: border-box;
     }
 
+    .frame-scale {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-origin: top left;
+    }
+
     .frame {
       display: grid;
       width: 100%;
@@ -112,6 +119,9 @@ export class CompiledCanvas extends LitElement {
   @property({ type: String, attribute: false })
   selectedPath?: string;
 
+  @property({ type: Number })
+  scale = 1;
+
   render() {
     if (!isCompatibleCompiledArtifact(this.artifact)) {
       return html`<div class="empty-state">Compiled artifact required for runtime rendering.</div>`;
@@ -139,20 +149,22 @@ export class CompiledCanvas extends LitElement {
     return html`
       <style>${this.artifact.css}</style>
       <div class="frame-wrapper">
-        <section class="frame" style=${styleMap(frameStyles)}>
-          ${repeat(
-            frame.order,
-            (nodeId) => nodeId,
-            (nodeId) =>
-              this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {}, resolvedFrameName)
-          )}
-        </section>
-        <ghost-layer
-          .ghostMap=${ghostMap}
-          .interactionAuthority=${this.ghostAuthority}
-          @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
-          @GHOST_HOTSPOT_TRIGGER=${this.handleGhostTrigger}
-        ></ghost-layer>
+        <div class="frame-scale" style=${styleMap({ transform: `scale(${this.scale})` })}>
+          <section class="frame" style=${styleMap(frameStyles)}>
+            ${repeat(
+              frame.order,
+              (nodeId) => nodeId,
+              (nodeId) =>
+                this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {}, resolvedFrameName)
+            )}
+          </section>
+          <ghost-layer
+            .ghostMap=${ghostMap}
+            .interactionAuthority=${this.ghostAuthority}
+            @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
+            @GHOST_HOTSPOT_TRIGGER=${this.handleGhostTrigger}
+          ></ghost-layer>
+        </div>
       </div>
     `;
   }
