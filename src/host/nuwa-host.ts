@@ -24,11 +24,14 @@ import {
   PIPELINE_PUBLISH_VERSION,
   PIPELINE_TRIGGER_BUILD,
   STYLER_UPDATE_PROP,
+  UI_FOCUS_SURFACE,
   createHostEventEnvelope,
   isCompatibleHostEventEnvelope,
   UI_DRAWER_CLOSE,
   UI_DRAWER_OPEN,
+  UI_RESET_LAYOUT,
   UI_SET_SCALE,
+  UI_TOGGLE_DRAWER,
   type HostEventEnvelope,
   type HostEventPayloadMap,
   type HostEventType,
@@ -1025,6 +1028,46 @@ const hostEventHandlers: HostEventHandlerMap = {
           [drawer]: { ...current, open: false },
         },
       },
+    };
+  },
+  [UI_TOGGLE_DRAWER]: (state, event) => {
+    const drawer = event.payload.drawer as DrawerName;
+    const current = state.ui.drawers[drawer];
+    const nextOpen = !current.open;
+    const nextSize = nextOpen ? event.payload.size ?? current.size : current.size;
+    if (current.open === nextOpen && current.size === nextSize) {
+      return state;
+    }
+    return {
+      ...state,
+      ui: {
+        ...state.ui,
+        drawers: {
+          ...state.ui.drawers,
+          [drawer]: { open: nextOpen, size: nextSize },
+        },
+      },
+    };
+  },
+  [UI_RESET_LAYOUT]: (state) => {
+    const nextScale = DEFAULT_UI_SCALE;
+    const nextDrawers = createUiDrawersState();
+    return {
+      ...state,
+      ui: {
+        ...state.ui,
+        scale: nextScale,
+        drawers: nextDrawers,
+      },
+    };
+  },
+  [UI_FOCUS_SURFACE]: (state, event) => {
+    if (state.ui.activeSurface === event.payload.surface) {
+      return state;
+    }
+    return {
+      ...state,
+      ui: { ...state.ui, activeSurface: event.payload.surface },
     };
   },
   [STYLER_UPDATE_PROP]: (state, event) => {

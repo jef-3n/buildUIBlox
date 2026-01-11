@@ -5,10 +5,14 @@ import {
   PIPELINE_ABORT_BUILD,
   PIPELINE_PUBLISH_VERSION,
   PIPELINE_TRIGGER_BUILD,
+  UI_FOCUS_SURFACE,
+  UI_RESET_LAYOUT,
   UI_SET_SCALE,
+  UI_TOGGLE_DRAWER,
   createHostEventEnvelope,
   type HostEventPayloadMap,
 } from '../../../contracts/event-envelope';
+import type { ActiveSurface } from '../../../contracts/ui-state';
 
 @customElement('builder-toolbar')
 export class BuilderToolbar extends LitElement {
@@ -152,6 +156,23 @@ export class BuilderToolbar extends LitElement {
     );
   }
 
+  private emitUiEnvelope<
+    T extends
+      | typeof UI_SET_SCALE
+      | typeof UI_TOGGLE_DRAWER
+      | typeof UI_RESET_LAYOUT
+      | typeof UI_FOCUS_SURFACE,
+  >(type: T, payload: HostEventPayloadMap[T]) {
+    const envelope = createHostEventEnvelope(type, payload, 'builder-toolbar');
+    this.dispatchEvent(
+      new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
+        detail: envelope,
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
   private handlePipelineTrigger() {
     if (!this.draftId) {
       return;
@@ -193,7 +214,33 @@ export class BuilderToolbar extends LitElement {
     });
   }
 
+  private handleDrawerToggle(
+    drawer: HostEventPayloadMap[typeof UI_TOGGLE_DRAWER]['drawer']
+  ) {
+    this.emitUiEnvelope(UI_TOGGLE_DRAWER, { drawer });
+  }
+
+  private handleLayoutReset() {
+    this.emitUiEnvelope(UI_RESET_LAYOUT, {});
+  }
+
+  private handleSurfaceFocus(event: Event) {
+    const target = event.currentTarget as HTMLSelectElement | null;
+    if (!target) {
+      return;
+    }
+    const surface = target.value as ActiveSurface;
+    this.emitUiEnvelope(UI_FOCUS_SURFACE, { surface });
+  }
+
   render() {
+    const surfaces: ActiveSurface[] = [
+      'canvas',
+      'frames',
+      'metadata',
+      'telemetry',
+      'unknown',
+    ];
     return html`
       <div class="title">Compiled Toolbar</div>
       <div class="actions">
@@ -221,6 +268,29 @@ export class BuilderToolbar extends LitElement {
           />
           <button type="button" @click=${this.handlePipelinePublish}>Publish</button>
         </div>
+      </div>
+      <div class="control">
+        <label>Layout</label>
+        <button type="button" @click=${this.handleLayoutReset}>Reset</button>
+        <button type="button" @click=${() => this.handleDrawerToggle('left')}>
+          Toggle Left
+        </button>
+        <button type="button" @click=${() => this.handleDrawerToggle('right')}>
+          Toggle Right
+        </button>
+        <button type="button" @click=${() => this.handleDrawerToggle('bottom')}>
+          Toggle Bottom
+        </button>
+      </div>
+      <div class="control">
+        <label for="surface-select">Surface</label>
+        <select id="surface-select" @change=${this.handleSurfaceFocus}>
+          ${surfaces.map(
+            (surface) => html`
+              <option value=${surface}>${surface}</option>
+            `
+          )}
+        </select>
       </div>
       <div class="control">
         <label for="scale-select">Scale</label>
