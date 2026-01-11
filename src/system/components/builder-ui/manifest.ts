@@ -163,7 +163,7 @@ export const createBuilderUiManifest = (
   };
 };
 
-export const builderUiManifest = createBuilderUiManifest({
+let builderUiManifest = createBuilderUiManifest({
   registries: {
     local: {
       key: 'local',
@@ -174,6 +174,21 @@ export const builderUiManifest = createBuilderUiManifest({
           label: 'Toolbar Drawer',
           modulePath: `${BUILDER_UI_REGISTRY_BOUNDARY}toolbar`,
         },
+        {
+          id: `${BUILDER_UI_REGISTRY_BOUNDARY}left-drawer`,
+          label: 'Warehouse Drawer',
+          modulePath: `${BUILDER_UI_REGISTRY_BOUNDARY}left-drawer`,
+        },
+        {
+          id: `${BUILDER_UI_REGISTRY_BOUNDARY}right-panel`,
+          label: 'Inspector Panel',
+          modulePath: `${BUILDER_UI_REGISTRY_BOUNDARY}right-panel`,
+        },
+        {
+          id: `${BUILDER_UI_REGISTRY_BOUNDARY}bottom-panel`,
+          label: 'Telemetry Panel',
+          modulePath: `${BUILDER_UI_REGISTRY_BOUNDARY}bottom-panel`,
+        },
       ],
     },
     remote: {
@@ -183,3 +198,12 @@ export const builderUiManifest = createBuilderUiManifest({
     },
   },
 });
+
+export const getBuilderUiManifest = () => builderUiManifest;
+
+export const setBuilderUiManifest = (next: BuilderUiManifest) => {
+  builderUiManifest = next;
+  return builderUiManifest;
+};
+
+export { builderUiManifest };

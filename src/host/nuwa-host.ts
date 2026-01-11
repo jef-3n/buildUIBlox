@@ -28,9 +28,14 @@ import {
   type HostEventType,
   WAREHOUSE_ADD_INTENT,
   WAREHOUSE_MOVE_INTENT,
+  BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY,
+  BUILDER_UI_BOOTSTRAP_PUBLISH,
+  BUILDER_UI_BOOTSTRAP_ROLLBACK,
+  BUILDER_UI_BOOTSTRAP_VERSION_PIN,
 } from '../contracts/event-envelope';
 import {
   getSlotReplacementInstruction,
+  isValidSlotReplacementTagName,
   type HostSlotName,
   type HostSlotReplacementState,
 } from './slot-replacement';
@@ -47,10 +52,17 @@ import {
 } from '../contracts/ui-state';
 import {
   BUILDER_UI_REGISTRY_BOUNDARY,
-  builderUiManifest,
+  getBuilderUiManifest,
+  setBuilderUiManifest,
   type BuilderUiComponentEntry,
 } from '../system/components/builder-ui/manifest';
-import { loadBuilderUiRegistry } from '../system/components/builder-ui/registry';
+import {
+  applyBuilderUiBootstrapFullClosure,
+  loadBuilderUiRegistry,
+  pinBuilderUiBootstrapVersion,
+  rollbackBuilderUiBootstrapVersion,
+  switchBuilderUiRegistry,
+} from '../system/components/builder-ui/registry';
 import './warehouse-drawer';
 
 
@@ -273,11 +285,35 @@ export class NuwaHost extends LitElement {
     const slotState = this.slotReplacementState[slotName];
     const instruction = getSlotReplacementInstruction(slotName, slotState);
     if (instruction.kind === 'component') {
-      const tagName = unsafeStatic(instruction.tagName);
-      return staticHtml`<${tagName}></${tagName}>`;
+      return this.renderSlotComponent(slotName, instruction.tagName);
     }
 
     return html`<slot name=${instruction.name}>${fallback}</slot>`;
+  }
+
+  private renderSlotComponent(slotName: HostSlotName, tagName: string) {
+    const tag = unsafeStatic(tagName);
+    switch (slotName) {
+      case 'right':
+        return staticHtml`<${tag}
+          .artifact=${this.hostState.artifact}
+          .draft=${this.hostState.draft}
+          .selectedPath=${this.hostState.selection.path}
+          .activeFrame=${this.hostState.ui.activeFrame}
+          .ghostEditMode=${this.ghostEditMode}
+        ></${tag}>`;
+      case 'bottom':
+        return staticHtml`<${tag}
+          .activeFrame=${this.hostState.ui.activeFrame}
+          .selectionPath=${this.hostState.selection.path ?? ''}
+          .compiledId=${this.hostState.artifact.compiledId}
+          .draftId=${this.hostState.draft.draftId}
+        ></${tag}>`;
+      case 'top':
+      case 'left':
+      default:
+        return staticHtml`<${tag}></${tag}>`;
+    }
   }
 
   private renderFrameToggle(activeFrame: FrameName) {
@@ -411,9 +447,20 @@ export class NuwaHost extends LitElement {
     );
   }
 
+  private resetSlotReplacementState() {
+    const idleState: HostSlotReplacementStateWithEntry = { status: 'idle' };
+    const nextState = { ...this.slotReplacementState };
+    (['top', 'left', 'right', 'bottom'] as HostSlotName[]).forEach((slotName) => {
+      this.slotLoadSequence[slotName] += 1;
+      nextState[slotName] = idleState;
+    });
+    this.slotReplacementState = nextState;
+  }
+
   private async loadBuilderUiSlots() {
-    const registryResult = loadBuilderUiRegistry(builderUiManifest);
+    const registryResult = loadBuilderUiRegistry(getBuilderUiManifest());
     if (!registryResult.ok) {
+      this.resetSlotReplacementState();
       return;
     }
 
@@ -422,7 +469,12 @@ export class NuwaHost extends LitElement {
     const slotReplacementOrder: HostSlotName[] = ['top', 'left', 'right', 'bottom'];
     const slotEntryMap: Partial<Record<HostSlotName, string>> = {
       top: `${BUILDER_UI_REGISTRY_BOUNDARY}toolbar`,
+      left: `${BUILDER_UI_REGISTRY_BOUNDARY}left-drawer`,
+      right: `${BUILDER_UI_REGISTRY_BOUNDARY}right-panel`,
+      bottom: `${BUILDER_UI_REGISTRY_BOUNDARY}bottom-panel`,
     };
+
+    this.resetSlotReplacementState();
 
     for (const slotName of slotReplacementOrder) {
       const entryId = slotEntryMap[slotName];
@@ -480,8 +532,11 @@ export class NuwaHost extends LitElement {
         unknown
       >;
       const tagName = this.resolveSlotTagName(loadedModule, entry);
-      if (!tagName) {
+      if (!tagName || !isValidSlotReplacementTagName(tagName)) {
         throw new Error(`Missing exported tag for ${entry.id}`);
+      }
+      if (globalThis.customElements && !globalThis.customElements.get(tagName)) {
+        throw new Error(`Missing custom element definition for ${tagName}`);
       }
       if (loadSequence !== this.slotLoadSequence[slotName]) {
         return;
@@ -512,6 +567,7 @@ export class NuwaHost extends LitElement {
   }
 
   private applyHostEventEnvelope(envelope: HostEventEnvelope) {
+    this.applyBuilderUiBootstrapEvent(envelope);
     const handler = hostEventHandlers[envelope.type];
     if (!handler) {
       return;
@@ -524,6 +580,57 @@ export class NuwaHost extends LitElement {
     this.hostState = nextState;
     this.emitObservationPacket(envelope, nextState, prevState);
     this.syncSharedSession(envelope, nextState);
+  }
+
+  private applyBuilderUiBootstrapEvent(envelope: HostEventEnvelope) {
+    switch (envelope.type) {
+      case BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY: {
+        const manifest = getBuilderUiManifest();
+        const nextRegistry =
+          envelope.payload.registry ??
+          (manifest.activeRegistry === 'local' ? 'remote' : 'local');
+        setBuilderUiManifest(switchBuilderUiRegistry(manifest, nextRegistry));
+        void this.loadBuilderUiSlots();
+        break;
+      }
+      case BUILDER_UI_BOOTSTRAP_PUBLISH: {
+        const { version, tag, notes, publishedAt } = envelope.payload;
+        const manifest = getBuilderUiManifest();
+        setBuilderUiManifest(
+          applyBuilderUiBootstrapFullClosure(manifest, version, {
+            tag,
+            notes,
+            publishedAt: publishedAt ?? new Date().toISOString(),
+          })
+        );
+        void this.loadBuilderUiSlots();
+        break;
+      }
+      case BUILDER_UI_BOOTSTRAP_ROLLBACK: {
+        const { version, reason, rolledBackAt } = envelope.payload;
+        const manifest = getBuilderUiManifest();
+        setBuilderUiManifest(
+          rollbackBuilderUiBootstrapVersion(
+            manifest,
+            version,
+            reason,
+            rolledBackAt ?? new Date().toISOString()
+          )
+        );
+        void this.loadBuilderUiSlots();
+        break;
+      }
+      case BUILDER_UI_BOOTSTRAP_VERSION_PIN: {
+        const manifest = getBuilderUiManifest();
+        setBuilderUiManifest(
+          pinBuilderUiBootstrapVersion(manifest, envelope.payload.versionPin)
+        );
+        void this.loadBuilderUiSlots();
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   private emitObservationPacket(
@@ -744,6 +851,10 @@ const hostEventHandlers: HostEventHandlerMap = {
   'ghost.trigger': (state) => state,
   [WAREHOUSE_ADD_INTENT]: (state) => state,
   [WAREHOUSE_MOVE_INTENT]: (state) => state,
+  [BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY]: (state) => state,
+  [BUILDER_UI_BOOTSTRAP_PUBLISH]: (state) => state,
+  [BUILDER_UI_BOOTSTRAP_ROLLBACK]: (state) => state,
+  [BUILDER_UI_BOOTSTRAP_VERSION_PIN]: (state) => state,
 };
 
 const isSelectionInFrame = (
