@@ -933,10 +933,10 @@ const hostEventHandlers: HostEventHandlerMap = {
     };
   },
   [UI_SET_SCALE]: (state, event) => {
-    if (state.ui.scale === event.payload.scale) {
+    const nextScale = Math.min(5, Math.max(1, event.payload.scale));
+    if (state.ui.scale === nextScale) {
       return state;
     }
-    const nextScale = Math.max(0.1, event.payload.scale);
     return {
       ...state,
       ui: { ...state.ui, scale: nextScale },
