@@ -54,6 +54,12 @@ const resolveDraftStyler = (
   return resolveStyler(draftStyler, frame);
 };
 
+const buildClassMap = (className: string | undefined, extra: Record<string, boolean>) => {
+  const classList = className?.split(/\s+/).filter(Boolean) ?? [];
+  const classMapEntries = Object.fromEntries(classList.map((entry) => [entry, true]));
+  return classMap({ ...classMapEntries, ...extra });
+};
+
 @customElement('compiled-canvas')
 export class CompiledCanvas extends LitElement {
   static styles = css`
@@ -162,7 +168,7 @@ export class CompiledCanvas extends LitElement {
       <style>${this.artifact.css}</style>
       <div class="frame-wrapper">
         <div class="frame-scale" style=${styleMap({ transform: `scale(${this.scale})` })}>
-          <section class="frame" style=${styleMap(frameStyles)}>
+          <section class="frame" data-frame=${resolvedFrameName} style=${styleMap(frameStyles)}>
             ${repeat(
               frame.order,
               (nodeId) => nodeId,
@@ -209,11 +215,9 @@ export class CompiledCanvas extends LitElement {
       ...resolveDraftStyler(this.draft, nodeId, frameName),
     };
 
-    const classes = classMap(
-      node.props?.className
-        ? { [node.props.className]: true, selected: this.isSelected(nodeId) }
-        : { selected: this.isSelected(nodeId) }
-    );
+    const classes = buildClassMap(node.props?.className, {
+      selected: this.isSelected(nodeId),
+    });
     if (node.type === 'image') {
       return html`
         <img
@@ -293,16 +297,10 @@ export class CompiledCanvas extends LitElement {
       ...resolveDraftStyler(this.draft, nodeId, frameName),
     };
 
-    const classes = classMap(
-      node.props?.className
-        ? { repeater: true, [node.props.className]: true }
-        : { repeater: true }
-    );
-    const itemClasses = classMap(
-      templateNode.props?.className
-        ? { 'repeater-item': true, [templateNode.props.className]: true }
-        : { 'repeater-item': true }
-    );
+    const classes = buildClassMap(node.props?.className, { repeater: true });
+    const itemClasses = buildClassMap(templateNode.props?.className, {
+      'repeater-item': true,
+    });
     const itemStyle = {
       ...resolveStyler(templateNode.props?.styler, this.activeFrame),
       ...resolveDraftStyler(this.draft, templateId, frameName),

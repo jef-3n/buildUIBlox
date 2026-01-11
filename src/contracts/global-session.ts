@@ -41,6 +41,7 @@ export type GlobalSessionSnapshot = {
   compiled?: GlobalSessionCompiledShadow;
   pipeline?: GlobalSessionPipelineState;
   draftLock?: GlobalSessionDraftLock;
+  tokens?: GlobalDesignTokens;
 };
 
 export type GlobalSessionUpdate = {
@@ -58,6 +59,14 @@ export type GlobalSessionUpdate = {
   compiled?: GlobalSessionCompiledShadow;
   pipeline?: GlobalSessionPipelineState;
   draftLock?: GlobalSessionDraftLock;
+  tokens?: GlobalDesignTokens;
+};
+
+type StyleValue = string | number;
+
+export type GlobalDesignTokens = {
+  palette?: Record<string, string>;
+  typography?: Record<string, Record<string, StyleValue>>;
 };
 
 export type GlobalSessionPipelineStatus = 'idle' | 'compiling' | 'error' | 'success';
@@ -141,6 +150,7 @@ const isGlobalSessionUpdate = (value: unknown): value is GlobalSessionUpdate => 
   if (!isOptionalPipelineState(value.pipeline)) return false;
   if (!isOptionalDraftLock(value.draftLock)) return false;
   if (!isOptionalCompiledShadow(value.compiled)) return false;
+  if (!isOptionalGlobalDesignTokens(value.tokens)) return false;
   return true;
 };
 
@@ -230,6 +240,34 @@ const isOptionalCompiledShadow = (
 ): value is GlobalSessionCompiledShadow | undefined =>
   typeof value === 'undefined' || isCompiledShadow(value);
 
+const isStyleValue = (value: unknown): value is StyleValue =>
+  typeof value === 'string' || (typeof value === 'number' && !Number.isNaN(value));
+
+const isTypographyToken = (value: unknown): value is Record<string, StyleValue> =>
+  isRecord(value) && Object.values(value).every((entry) => isStyleValue(entry));
+
+const isGlobalDesignTokens = (value: unknown): value is GlobalDesignTokens => {
+  if (!isRecord(value)) return false;
+  if (typeof value.palette !== 'undefined') {
+    if (!isRecord(value.palette)) return false;
+    if (!Object.values(value.palette).every((entry) => typeof entry === 'string')) {
+      return false;
+    }
+  }
+  if (typeof value.typography !== 'undefined') {
+    if (!isRecord(value.typography)) return false;
+    if (!Object.values(value.typography).every((entry) => isTypographyToken(entry))) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const isOptionalGlobalDesignTokens = (
+  value: unknown
+): value is GlobalDesignTokens | undefined =>
+  typeof value === 'undefined' || isGlobalDesignTokens(value);
+
 export const isCompatibleGlobalSessionPipelineState = (
   value?: unknown
 ): value is GlobalSessionPipelineState => isPipelineState(value);
@@ -241,3 +279,7 @@ export const isCompatibleGlobalSessionDraftLock = (
 export const isCompatibleGlobalSessionCompiledShadow = (
   value?: unknown
 ): value is GlobalSessionCompiledShadow => isCompiledShadow(value);
+
+export const isCompatibleGlobalDesignTokens = (
+  value?: unknown
+): value is GlobalDesignTokens => isGlobalDesignTokens(value);

@@ -1,6 +1,7 @@
 import type { FrameName } from './frame-types';
 import {
   GLOBAL_SESSION_SCHEMA_VERSION,
+  type GlobalDesignTokens,
   type GlobalPresenceState,
   type GlobalSessionCompiledShadow,
   type GlobalSessionPipelineState,
@@ -159,6 +160,7 @@ export class SharedSession extends EventTarget {
     draftId?: string;
     compiledId?: string;
     firestore?: FirestoreAdapter;
+    tokens?: GlobalDesignTokens;
   }) {
     super();
     const sessionId = createSessionId();
@@ -186,6 +188,7 @@ export class SharedSession extends EventTarget {
         draftId,
         compiledId,
       },
+      tokens: initial.tokens,
       draftLock: {
         locked: false,
         draftId,
@@ -248,6 +251,7 @@ export class SharedSession extends EventTarget {
         | 'pipeline'
         | 'draftLock'
         | 'compiled'
+        | 'tokens'
       >
     >,
     options?: { skipFirestore?: boolean }
@@ -264,6 +268,7 @@ export class SharedSession extends EventTarget {
       pipeline: partial.pipeline ?? this.state.pipeline,
       draftLock: partial.draftLock ?? this.state.draftLock,
       compiled: partial.compiled ?? this.state.compiled,
+      tokens: partial.tokens ?? this.state.tokens,
     };
 
     const hasChanges =
@@ -276,7 +281,8 @@ export class SharedSession extends EventTarget {
       nextState.compiledId !== this.state.compiledId ||
       nextState.pipeline !== this.state.pipeline ||
       nextState.draftLock !== this.state.draftLock ||
-      nextState.compiled !== this.state.compiled;
+      nextState.compiled !== this.state.compiled ||
+      nextState.tokens !== this.state.tokens;
 
     if (!hasChanges) {
       return;
@@ -311,6 +317,7 @@ export class SharedSession extends EventTarget {
       pipeline: nextState.pipeline,
       draftLock: nextState.draftLock,
       compiled: resolvedCompiledShadow,
+      tokens: nextState.tokens,
     };
 
     this.applyUpdate(update, 'local');
@@ -524,6 +531,7 @@ export class SharedSession extends EventTarget {
       compiled: nextCompiledShadow,
       pipeline: snapshot.pipeline,
       draftLock: snapshot.draftLock,
+      tokens: snapshot.tokens ?? this.state.tokens,
       presence: nextPresence,
     };
 
@@ -597,6 +605,7 @@ export class SharedSession extends EventTarget {
       compiled: nextCompiledShadow,
       pipeline: update.pipeline ?? this.state.pipeline,
       draftLock: update.draftLock ?? this.state.draftLock,
+      tokens: update.tokens ?? this.state.tokens,
       presence: nextPresence,
     };
 
@@ -621,4 +630,5 @@ export const createSharedSession = (initial: {
   draftId?: string;
   compiledId?: string;
   firestore?: FirestoreAdapter;
+  tokens?: GlobalDesignTokens;
 }) => new SharedSession(initial);
