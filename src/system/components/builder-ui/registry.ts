@@ -143,19 +143,12 @@ export const switchBuilderUiRegistry = (
   },
 });
 
-export const loadBuilderUiRegistry = (manifest: BuilderUiManifest): BuilderUiRegistryLoadResult => {
-  const validation = validateBuilderUiManifest(manifest);
-  if (!validation.ok) {
-    return { ok: false, validation };
-  }
-
+export const resolveBuilderUiRegistrySnapshot = (
+  manifest: BuilderUiManifest
+): { snapshot?: BuilderUiRegistrySnapshot; missingRegistryKey?: BuilderUiRegistryKey } => {
   const bootstrapSnapshot = resolveBootstrapSnapshot(manifest);
   if (bootstrapSnapshot) {
-    return {
-      ok: true,
-      validation,
-      snapshot: bootstrapSnapshot,
-    };
+    return { snapshot: bootstrapSnapshot };
   }
 
   const targetRegistryKey = manifest.bootstrap.isSelfHosting
@@ -165,13 +158,7 @@ export const loadBuilderUiRegistry = (manifest: BuilderUiManifest): BuilderUiReg
     manifest.registries[targetRegistryKey] ??
     manifest.registries[manifest.bootstrap.fallbackRegistry];
   if (!registry) {
-    return {
-      ok: false,
-      validation: {
-        ok: false,
-        errors: [`missing active registry ${targetRegistryKey}`],
-      },
-    };
+    return { missingRegistryKey: targetRegistryKey };
   }
 
   const snapshot =
@@ -184,10 +171,30 @@ export const loadBuilderUiRegistry = (manifest: BuilderUiManifest): BuilderUiReg
       bootstrap: toBootstrapSnapshot(manifest.bootstrap),
     };
 
+  return { snapshot };
+};
+
+export const loadBuilderUiRegistry = (manifest: BuilderUiManifest): BuilderUiRegistryLoadResult => {
+  const validation = validateBuilderUiManifest(manifest);
+  if (!validation.ok) {
+    return { ok: false, validation };
+  }
+
+  const resolved = resolveBuilderUiRegistrySnapshot(manifest);
+  if (!resolved.snapshot) {
+    return {
+      ok: false,
+      validation: {
+        ok: false,
+        errors: [`missing active registry ${resolved.missingRegistryKey}`],
+      },
+    };
+  }
+
   return {
     ok: true,
     validation,
-    snapshot,
+    snapshot: resolved.snapshot,
   };
 };
 
