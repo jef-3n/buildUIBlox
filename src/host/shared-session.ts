@@ -15,6 +15,7 @@ import {
   type UiDrawersState,
 } from '../contracts/ui-state';
 import { GlobalSessionStore } from './global-session-store';
+import type { FirestoreAdapter } from './firestore-adapter';
 
 export type PresenceState = GlobalPresenceState;
 
@@ -151,6 +152,7 @@ export class SharedSession extends EventTarget {
     appId?: string;
     draftId?: string;
     compiledId?: string;
+    firestore?: FirestoreAdapter;
   }) {
     super();
     const sessionId = createSessionId();
@@ -204,7 +206,9 @@ export class SharedSession extends EventTarget {
         ),
       },
     };
-    this.store = new GlobalSessionStore(initial.appId ?? 'demo-app', this.state);
+    this.store = new GlobalSessionStore(initial.appId ?? 'demo-app', this.state, {
+      firestore: initial.firestore,
+    });
   }
 
   connect() {
@@ -565,4 +569,5 @@ export const createSharedSession = (initial: {
   appId?: string;
   draftId?: string;
   compiledId?: string;
+  firestore?: FirestoreAdapter;
 }) => new SharedSession(initial);
