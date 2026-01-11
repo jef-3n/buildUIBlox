@@ -25,6 +25,12 @@ type InspectorField = {
   inputType?: string;
 };
 
+type BindingTreeNode = {
+  label: string;
+  path: string;
+  children?: BindingTreeNode[];
+};
+
 const styleFields: InspectorField[] = [
   { label: 'Text color', key: 'color', placeholder: '#0f172a' },
   { label: 'Background', key: 'backgroundColor', placeholder: '#ffffff' },
@@ -36,6 +42,33 @@ const bindingFields: InspectorField[] = [
   { label: 'Text path', key: 'textPath', placeholder: 'data.title' },
   { label: 'Data path', key: 'dataPath', placeholder: 'data.items' },
   { label: 'Template ID', key: 'templateId', placeholder: 'template-card' },
+];
+
+const bindingTree: BindingTreeNode[] = [
+  {
+    label: 'data',
+    path: 'data',
+    children: [
+      { label: 'title', path: 'data.title' },
+      { label: 'subtitle', path: 'data.subtitle' },
+      {
+        label: 'items',
+        path: 'data.items',
+        children: [
+          { label: 'name', path: 'data.items[].name' },
+          { label: 'price', path: 'data.items[].price' },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'session',
+    path: 'session',
+    children: [
+      { label: 'user.name', path: 'session.user.name' },
+      { label: 'user.email', path: 'session.user.email' },
+    ],
+  },
 ];
 
 @customElement('inspector-panel')
@@ -69,6 +102,12 @@ export class InspectorPanel extends LitElement {
 
   @state()
   private payloadError?: string;
+
+  @state()
+  private bindingTarget = bindingFields[0]?.key ?? 'textPath';
+
+  @state()
+  private bindingPath = '';
 
   static styles = css`
     :host {
@@ -182,6 +221,52 @@ export class InspectorPanel extends LitElement {
       color: #b91c1c;
       font-size: 0.75rem;
     }
+
+    .binding-picker {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      border-top: 1px dashed #e2e8f0;
+      padding-top: 12px;
+    }
+
+    .binding-tree {
+      display: grid;
+      gap: 4px;
+      padding-left: 8px;
+    }
+
+    .binding-node {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: #0f172a;
+    }
+
+    .binding-node button {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      color: inherit;
+    }
+
+    .binding-node button:hover {
+      background: #f1f5f9;
+    }
+
+    .binding-node button.selected {
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+
+    .binding-meta {
+      font-size: 0.7rem;
+      color: #94a3b8;
+    }
   `;
 
   render() {
@@ -203,7 +288,40 @@ export class InspectorPanel extends LitElement {
       <section class="section">
         <h3>Binding controls</h3>
         ${nodeId
-          ? html`<div class="fields">${bindingFields.map((field) => this.renderBindingField(nodeId, field))}</div>`
+          ? html`
+              <div class="fields">
+                ${bindingFields.map((field) => this.renderBindingField(nodeId, field))}
+              </div>
+              <div class="binding-picker">
+                <label>
+                  <span>Binding target</span>
+                  <select @change=${this.handleBindingTargetChange}>
+                    ${bindingFields.map(
+                      (field) => html`
+                        <option
+                          value=${field.key}
+                          ?selected=${this.bindingTarget === field.key}
+                        >
+                          ${field.label}
+                        </option>
+                      `
+                    )}
+                  </select>
+                </label>
+                <div class="binding-meta">
+                  Pick a stubbed data path to emit a binding update event.
+                </div>
+                <div class="binding-tree">
+                  ${bindingTree.map((node) => this.renderBindingTreeNode(node))}
+                </div>
+                <button
+                  @click=${() => this.handleBindingPathApply(nodeId)}
+                  ?disabled=${!this.bindingPath}
+                >
+                  Apply binding path
+                </button>
+              </div>
+            `
           : html`<div class="empty">Select a node to edit bindings.</div>`}
       </section>
       <section class="section">
@@ -420,6 +538,26 @@ export class InspectorPanel extends LitElement {
     this.emitHostEvent(GHOST_MAP_EDIT, payload);
   }
 
+  private handleBindingTargetChange(event: Event) {
+    const target = event.currentTarget as HTMLSelectElement | null;
+    if (!target) {
+      return;
+    }
+    this.bindingTarget = target.value;
+  }
+
+  private handleBindingPathSelect(path: string) {
+    this.bindingPath = path;
+  }
+
+  private handleBindingPathApply(nodeId: string) {
+    if (!this.bindingPath) {
+      return;
+    }
+    const path = `nodes.${nodeId}.props.bindings.${this.bindingTarget}`;
+    this.emitHostEvent(BINDING_UPDATE_PROP, { path, value: this.bindingPath });
+  }
+
   private emitHostEvent<T extends HostEventType>(
     type: T,
     payload: HostEventPayloadMap[T]
@@ -432,6 +570,26 @@ export class InspectorPanel extends LitElement {
         composed: true,
       })
     );
+  }
+
+  private renderBindingTreeNode(node: BindingTreeNode) {
+    const isSelected = this.bindingPath === node.path;
+    return html`
+      <div class="binding-node">
+        <button
+          class=${isSelected ? 'selected' : ''}
+          type="button"
+          @click=${() => this.handleBindingPathSelect(node.path)}
+        >
+          ${node.label}
+        </button>
+      </div>
+      ${node.children?.length
+        ? html`<div class="binding-tree">
+            ${node.children.map((child) => this.renderBindingTreeNode(child))}
+          </div>`
+        : ''}
+    `;
   }
 
   private getSelectionNode(): { id: string; node: CompiledNode } | null {
