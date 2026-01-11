@@ -22,6 +22,11 @@ export const UI_DRAWER_OPEN = 'ui.drawer.open' as const;
 export const UI_DRAWER_CLOSE = 'ui.drawer.close' as const;
 export const WAREHOUSE_ADD_INTENT = 'warehouse.addIntent' as const;
 export const WAREHOUSE_MOVE_INTENT = 'warehouse.moveIntent' as const;
+export const BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY =
+  'builderUi.bootstrap.toggleRegistry' as const;
+export const BUILDER_UI_BOOTSTRAP_PUBLISH = 'builderUi.bootstrap.publish' as const;
+export const BUILDER_UI_BOOTSTRAP_ROLLBACK = 'builderUi.bootstrap.rollback' as const;
+export const BUILDER_UI_BOOTSTRAP_VERSION_PIN = 'builderUi.bootstrap.versionPin' as const;
 
 export const COMPATIBLE_HOST_EVENT_ENVELOPE_VERSIONS = new Set<string>([
   HOST_EVENT_ENVELOPE_VERSION,
@@ -41,7 +46,13 @@ export type HostEventType =
   | 'pipeline.state'
   | 'ghost.trigger'
   | typeof WAREHOUSE_ADD_INTENT
-  | typeof WAREHOUSE_MOVE_INTENT;
+  | typeof WAREHOUSE_MOVE_INTENT
+  | typeof BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY
+  | typeof BUILDER_UI_BOOTSTRAP_PUBLISH
+  | typeof BUILDER_UI_BOOTSTRAP_ROLLBACK
+  | typeof BUILDER_UI_BOOTSTRAP_VERSION_PIN;
+
+type BuilderUiRegistryKey = 'local' | 'remote';
 
 export type HostEventPayloadMap = {
   'ui.setFrame': { frame: FrameName };
@@ -82,6 +93,23 @@ export type HostEventPayloadMap = {
     from?: string;
     to?: string;
   };
+  [BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY]: {
+    registry?: BuilderUiRegistryKey;
+  };
+  [BUILDER_UI_BOOTSTRAP_PUBLISH]: {
+    version: string;
+    tag: string;
+    notes?: string;
+    publishedAt?: string;
+  };
+  [BUILDER_UI_BOOTSTRAP_ROLLBACK]: {
+    version: string;
+    reason?: string;
+    rolledBackAt?: string;
+  };
+  [BUILDER_UI_BOOTSTRAP_VERSION_PIN]: {
+    versionPin?: string;
+  };
 };
 
 export type HostEventEnvelope<T extends HostEventType = HostEventType> = {
@@ -102,6 +130,7 @@ const VALID_SURFACES: ActiveSurface[] = [
   'unknown',
 ];
 const VALID_DRAWERS = ['top', 'left', 'right', 'bottom'] as const;
+const BUILDER_UI_REGISTRY_KEYS: BuilderUiRegistryKey[] = ['local', 'remote'];
 
 const isFrameName = (value: unknown): value is FrameName =>
   typeof value === 'string' && VALID_FRAMES.includes(value as FrameName);
@@ -111,6 +140,9 @@ const isActiveSurface = (value: unknown): value is ActiveSurface =>
 
 const isSessionOrigin = (value: unknown): value is 'local' | 'remote' =>
   value === 'local' || value === 'remote';
+
+const isBuilderUiRegistryKey = (value: unknown): value is BuilderUiRegistryKey =>
+  typeof value === 'string' && BUILDER_UI_REGISTRY_KEYS.includes(value as BuilderUiRegistryKey);
 
 const hasHostEventPayload = (
   type: HostEventType,
@@ -170,6 +202,25 @@ const hasHostEventPayload = (
         hasString(payload.label) &&
         (payload.kind === 'primitive' || payload.kind === 'template')
       );
+    case BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY:
+      return (
+        typeof payload.registry === 'undefined' || isBuilderUiRegistryKey(payload.registry)
+      );
+    case BUILDER_UI_BOOTSTRAP_PUBLISH:
+      return (
+        hasString(payload.version) &&
+        hasString(payload.tag) &&
+        (typeof payload.notes === 'undefined' || hasString(payload.notes)) &&
+        (typeof payload.publishedAt === 'undefined' || hasString(payload.publishedAt))
+      );
+    case BUILDER_UI_BOOTSTRAP_ROLLBACK:
+      return (
+        hasString(payload.version) &&
+        (typeof payload.reason === 'undefined' || hasString(payload.reason)) &&
+        (typeof payload.rolledBackAt === 'undefined' || hasString(payload.rolledBackAt))
+      );
+    case BUILDER_UI_BOOTSTRAP_VERSION_PIN:
+      return typeof payload.versionPin === 'undefined' || hasString(payload.versionPin);
     default:
       return false;
   }
