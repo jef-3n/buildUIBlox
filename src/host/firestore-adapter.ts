@@ -8,6 +8,13 @@ export type FirestoreTransactionAdapter = {
   set: (path: string, data: unknown) => void;
 };
 
+export type PipelineCompileRequest = {
+  appId: string;
+  draftId: string;
+  compiledId: string;
+  triggeredAt: string;
+};
+
 export type FirestoreAdapter = {
   get: (path: string) => Promise<FirestoreDocumentSnapshot | undefined>;
   set: (path: string, data: unknown) => Promise<void>;
@@ -19,6 +26,7 @@ export type FirestoreAdapter = {
   runTransaction?: <T>(
     updateFn: (transaction: FirestoreTransactionAdapter) => Promise<T>
   ) => Promise<T>;
+  invokeCompileWorker?: (request: PipelineCompileRequest) => Promise<void>;
 };
 
 export const resolveSnapshotData = (

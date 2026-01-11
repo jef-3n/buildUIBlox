@@ -80,16 +80,23 @@ export class GlobalSessionStore {
 
   write(
     snapshot: GlobalSessionSnapshot,
-    origin: GlobalSessionStoreOrigin = 'local'
+    origin: GlobalSessionStoreOrigin = 'local',
+    options?: { skipFirestore?: boolean }
   ) {
     if (this.isIncomingStale(snapshot, this.snapshot)) {
       return false;
     }
     this.snapshot = snapshot;
     this.persistSnapshot(snapshot);
-    void this.persistFirestoreSnapshot(snapshot);
+    if (!options?.skipFirestore) {
+      void this.persistFirestoreSnapshot(snapshot);
+    }
     this.notify(snapshot, origin);
     return true;
+  }
+
+  async flushFirestore(snapshot: GlobalSessionSnapshot) {
+    await this.persistFirestoreSnapshot(snapshot);
   }
 
   private notify(snapshot: GlobalSessionSnapshot, origin: GlobalSessionStoreOrigin) {

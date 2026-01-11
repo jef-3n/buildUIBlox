@@ -4,6 +4,7 @@ import {
   type GlobalPresenceState,
   type GlobalSessionCompiledShadow,
   type GlobalSessionPipelineState,
+  type GlobalSessionPipelineError,
   type GlobalSessionSnapshot,
   type GlobalSessionUpdate,
   isCompatibleGlobalSessionSnapshot,
@@ -16,6 +17,9 @@ import {
 } from '../contracts/ui-state';
 import { GlobalSessionStore } from './global-session-store';
 import type { FirestoreAdapter } from './firestore-adapter';
+import type { CompiledArtifact } from './compiled-contract';
+import { createCompiledId } from './compiler';
+import { ARTIFACT_PATHS } from '../contracts/artifact-policy';
 
 export type PresenceState = GlobalPresenceState;
 
@@ -141,6 +145,8 @@ const resolveCompiledShadow = (
 export class SharedSession extends EventTarget {
   private store: GlobalSessionStore;
   private unsubscribe?: () => void;
+  private appId: string;
+  private firestore?: FirestoreAdapter;
   state: SharedSessionSnapshot;
 
   constructor(initial: {
@@ -161,6 +167,8 @@ export class SharedSession extends EventTarget {
     const compiledId = initial.compiledId;
     const scale = initial.scale ?? DEFAULT_UI_SCALE;
     const drawers = initial.drawers ?? createUiDrawersState();
+    this.appId = initial.appId ?? 'demo-app';
+    this.firestore = initial.firestore;
     this.state = {
       schemaVersion: GLOBAL_SESSION_SCHEMA_VERSION,
       sessionId,
@@ -206,8 +214,8 @@ export class SharedSession extends EventTarget {
         ),
       },
     };
-    this.store = new GlobalSessionStore(initial.appId ?? 'demo-app', this.state, {
-      firestore: initial.firestore,
+    this.store = new GlobalSessionStore(this.appId, this.state, {
+      firestore: this.firestore,
     });
   }
 
@@ -241,7 +249,8 @@ export class SharedSession extends EventTarget {
         | 'draftLock'
         | 'compiled'
       >
-    >
+    >,
+    options?: { skipFirestore?: boolean }
   ) {
     const nextState = {
       activeFrame: partial.activeFrame ?? this.state.activeFrame,
@@ -305,24 +314,32 @@ export class SharedSession extends EventTarget {
     };
 
     this.applyUpdate(update, 'local');
-    this.store.write(this.state, 'local');
+    this.store.write(this.state, 'local', options);
   }
 
-  triggerPipeline(draftId: string) {
+  async triggerPipeline(draftId: string) {
     const now = new Date().toISOString();
+    const compiledId = createCompiledId(draftId);
     this.update({
       draftId,
       pipeline: {
         status: 'compiling',
         triggeredAt: now,
         draftId,
-        compiledId: this.state.compiledId,
+        compiledId,
       },
       draftLock: {
         locked: true,
         draftId,
         lockedAt: now,
       },
+    });
+    await this.store.flushFirestore(this.state);
+    await this.firestore?.invokeCompileWorker?.({
+      appId: this.appId,
+      draftId,
+      compiledId,
+      triggeredAt: now,
     });
   }
 
@@ -350,30 +367,64 @@ export class SharedSession extends EventTarget {
     });
   }
 
-  publishPipeline(compiledId: string, metadata?: { tag: string; notes?: string }) {
+  async publishPipeline(
+    compiled: CompiledArtifact,
+    metadata?: { tag: string; notes?: string }
+  ) {
     const now = new Date().toISOString();
     const draftId = this.state.draftId;
+    const compiledId = compiled.compiledId;
+    const pipeline = {
+      status: 'success',
+      publishedAt: now,
+      tag: metadata?.tag,
+      notes: metadata?.notes,
+      draftId,
+      compiledId,
+    } as const;
+    const draftLock = {
+      locked: false,
+      draftId,
+      releasedAt: now,
+    };
+    const compiledShadow =
+      draftId && compiledId
+        ? {
+            draftId,
+            compiledId,
+            publishedAt: now,
+          }
+        : undefined;
+
+    const useTransaction = Boolean(this.firestore?.runTransaction);
     this.update({
       compiledId,
-      compiled:
-        draftId && compiledId
-          ? {
-              draftId,
-              compiledId,
-              publishedAt: now,
-            }
-          : undefined,
+      compiled: compiledShadow,
+      pipeline,
+      draftLock,
+    }, useTransaction ? { skipFirestore: true } : undefined);
+
+    if (this.firestore?.runTransaction) {
+      await this.firestore.runTransaction(async (transaction) => {
+        transaction.set(ARTIFACT_PATHS.compiled(this.appId, compiledId), compiled);
+        transaction.set(ARTIFACT_PATHS.globalSession(this.appId), this.state);
+      });
+    }
+  }
+
+  recordPipelineError(error: GlobalSessionPipelineError) {
+    const now = new Date().toISOString();
+    this.update({
       pipeline: {
-        status: 'success',
-        publishedAt: now,
-        tag: metadata?.tag,
-        notes: metadata?.notes,
-        draftId,
-        compiledId,
+        status: 'error',
+        abortedAt: now,
+        draftId: this.state.draftId,
+        compiledId: this.state.compiledId,
+        error,
       },
       draftLock: {
         locked: false,
-        draftId,
+        draftId: this.state.draftId,
         releasedAt: now,
       },
     });
