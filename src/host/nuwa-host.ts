@@ -19,6 +19,7 @@ import './telemetry-sniffer';
 import {
   BINDING_UPDATE_PROP,
   GHOST_MAP_EDIT,
+  GHOST_RESIZE_FRAME,
   HOST_EVENT_ENVELOPE_EVENT,
   PIPELINE_ABORT_BUILD,
   PIPELINE_PUBLISH_VERSION,
@@ -33,6 +34,7 @@ import {
   UI_SET_SCALE,
   UI_TOGGLE_DRAWER,
   type HostEventEnvelope,
+  type GhostHotspotEditPayload,
   type HostEventPayloadMap,
   type HostEventType,
   WAREHOUSE_ADD_INTENT,
@@ -145,6 +147,9 @@ export class NuwaHost extends LitElement {
   @state()
   private ghostEditMode = false;
 
+  @state()
+  private ghostDrawMode = false;
+
   static styles = css`
     :host {
       display: grid;
@@ -229,6 +234,10 @@ export class NuwaHost extends LitElement {
       'INSPECTOR_GHOST_EDIT_TOGGLE',
       this.handleGhostEditToggle as EventListener
     );
+    this.addEventListener(
+      'INSPECTOR_GHOST_DRAW_TOGGLE',
+      this.handleGhostDrawToggle as EventListener
+    );
     this.sharedSession.connect();
     this.connectArtifactStores();
     this.loadBuilderUiSlots();
@@ -247,6 +256,10 @@ export class NuwaHost extends LitElement {
     this.removeEventListener(
       'INSPECTOR_GHOST_EDIT_TOGGLE',
       this.handleGhostEditToggle as EventListener
+    );
+    this.removeEventListener(
+      'INSPECTOR_GHOST_DRAW_TOGGLE',
+      this.handleGhostDrawToggle as EventListener
     );
     this.sharedSession.disconnect();
     this.disconnectArtifactStores();
@@ -279,6 +292,7 @@ export class NuwaHost extends LitElement {
             .selectedPath=${this.hostState.selection.path}
             .scale=${this.hostState.ui.scale}
             .ghostEditMode=${this.ghostEditMode}
+            .ghostDrawMode=${this.ghostDrawMode}
           ></compiled-canvas>
         </slot>
       </main>
@@ -292,6 +306,7 @@ export class NuwaHost extends LitElement {
               .selectedPath=${this.hostState.selection.path}
               .activeFrame=${activeFrame}
               .ghostEditMode=${this.ghostEditMode}
+              .ghostDrawMode=${this.ghostDrawMode}
             ></inspector-panel>
           `
         )}
@@ -421,6 +436,13 @@ export class NuwaHost extends LitElement {
       return;
     }
     this.ghostEditMode = event.detail.enabled;
+  }
+
+  private handleGhostDrawToggle(event: CustomEvent<{ enabled: boolean }>) {
+    if (typeof event.detail?.enabled !== 'boolean') {
+      return;
+    }
+    this.ghostDrawMode = event.detail.enabled;
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {
@@ -767,13 +789,17 @@ export class NuwaHost extends LitElement {
     if (
       (event.type === STYLER_UPDATE_PROP ||
         event.type === BINDING_UPDATE_PROP ||
-        event.type === GHOST_MAP_EDIT) &&
+        event.type === GHOST_MAP_EDIT ||
+        event.type === GHOST_RESIZE_FRAME) &&
       nextState.draft !== prevState.draft
     ) {
       this.draftStore.write(nextState.draft, 'local');
       this.queueAutoCompile(nextState.draft.metadata.draftId);
     }
-    if (event.type === GHOST_MAP_EDIT && nextState.artifact !== prevState.artifact) {
+    if (
+      (event.type === GHOST_MAP_EDIT || event.type === GHOST_RESIZE_FRAME) &&
+      nextState.artifact !== prevState.artifact
+    ) {
       this.compiledStore.write(nextState.artifact, 'local');
     }
   }
@@ -907,6 +933,7 @@ const draftLockGuardedEvents = new Set<HostEventType>([
   STYLER_UPDATE_PROP,
   BINDING_UPDATE_PROP,
   GHOST_MAP_EDIT,
+  GHOST_RESIZE_FRAME,
   'ghost.trigger',
 ]);
 
@@ -922,18 +949,23 @@ const toGhostRect = (rect: DOMRect): GhostRect => ({
 
 const upsertGhostMapHotspot = (
   ghostMap: GhostHotspot[],
-  payload: HostEventPayloadMap[typeof GHOST_MAP_EDIT]
+  payload: GhostHotspotEditPayload
 ): GhostHotspot[] => {
-  const existing = ghostMap.find((hotspot) => hotspot.id === payload.hotspotId);
-  const rect = toGhostRect(payload.rect);
+  const { hotspot } = payload;
+  const existing = ghostMap.find((entry) => entry.id === hotspot.id);
+  const rect = toGhostRect(hotspot.rect);
+  const hasEmitter = Object.prototype.hasOwnProperty.call(hotspot, 'emitter');
+  const hasPayload = Object.prototype.hasOwnProperty.call(hotspot, 'payload');
   const nextHotspot: GhostHotspot = {
-    ...(existing ?? { id: payload.hotspotId, rect }),
-    id: payload.hotspotId,
+    ...(existing ?? { id: hotspot.id, rect }),
+    id: hotspot.id,
     rect,
-    path: payload.path,
-    frame: payload.frame,
+    path: hotspot.path ?? existing?.path,
+    frame: hotspot.frame ?? existing?.frame,
+    emitter: hasEmitter ? hotspot.emitter : existing?.emitter,
+    payload: hasPayload ? hotspot.payload : existing?.payload,
   };
-  const nextGhostMap = ghostMap.filter((hotspot) => hotspot.id !== payload.hotspotId);
+  const nextGhostMap = ghostMap.filter((entry) => entry.id !== hotspot.id);
   nextGhostMap.push(nextHotspot);
   return nextGhostMap;
 };
@@ -1170,6 +1202,27 @@ const hostEventHandlers: HostEventHandlerMap = {
   [PIPELINE_ABORT_BUILD]: (state) => state,
   [PIPELINE_PUBLISH_VERSION]: (state) => state,
   [GHOST_MAP_EDIT]: (state, event) => {
+    const sourceGhostMap =
+      state.draft.assets.ghostMap ?? state.artifact.runtime.ghostMap ?? [];
+    const nextGhostMap = upsertGhostMapHotspot(sourceGhostMap, event.payload);
+    const nextDraft = {
+      ...state.draft,
+      assets: {
+        ...state.draft.assets,
+        ghostMap: nextGhostMap,
+      },
+    };
+    const nextArtifact = compileDraftArtifact(nextDraft, {
+      compiledId: state.artifact.compiledId,
+      baseArtifact: state.artifact,
+    });
+    return {
+      ...state,
+      draft: nextDraft,
+      artifact: nextArtifact,
+    };
+  },
+  [GHOST_RESIZE_FRAME]: (state, event) => {
     const sourceGhostMap =
       state.draft.assets.ghostMap ?? state.artifact.runtime.ghostMap ?? [];
     const nextGhostMap = upsertGhostMapHotspot(sourceGhostMap, event.payload);
