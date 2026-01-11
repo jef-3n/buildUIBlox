@@ -104,6 +104,7 @@ export class NuwaHost extends LitElement {
     selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
     artifact: sampleCompiledArtifact,
     draft: sampleDraft,
+    draftLock: this.sharedSession.state.draftLock,
   };
 
   @state()
@@ -568,6 +569,9 @@ export class NuwaHost extends LitElement {
 
   private applyHostEventEnvelope(envelope: HostEventEnvelope) {
     this.applyBuilderUiBootstrapEvent(envelope);
+    if (this.hostState.draftLock.locked && isDraftLockGuardedEvent(envelope.type)) {
+      return;
+    }
     const handler = hostEventHandlers[envelope.type];
     if (!handler) {
       return;
@@ -670,6 +674,15 @@ export class NuwaHost extends LitElement {
 type HostEventHandlerMap = {
   [K in HostEventType]: (state: HostState, event: HostEventEnvelope<K>) => HostState;
 };
+
+const draftLockGuardedEvents = new Set<HostEventType>([
+  STYLER_UPDATE_PROP,
+  BINDING_UPDATE_PROP,
+  'ghost.trigger',
+]);
+
+const isDraftLockGuardedEvent = (eventType: HostEventType) =>
+  draftLockGuardedEvents.has(eventType);
 
 const hostEventHandlers: HostEventHandlerMap = {
   // Active surface rules:
@@ -803,6 +816,7 @@ const hostEventHandlers: HostEventHandlerMap = {
       scale: session.scale ?? state.ui.scale,
       drawers: session.drawers ?? state.ui.drawers,
     };
+    const nextDraftLock = session.draftLock ?? state.draftLock;
 
     let nextSelection = state.selection.path;
     let nextSelectionsByFrame = state.selectionsByFrame;
@@ -844,9 +858,19 @@ const hostEventHandlers: HostEventHandlerMap = {
       ui: nextUi,
       selection: { path: nextSelection },
       selectionsByFrame: nextSelectionsByFrame,
+      draftLock: nextDraftLock,
     };
   },
-  'session.state': (state) => state,
+  'session.state': (state, event) => {
+    const nextDraftLock = event.payload.session.draftLock ?? state.draftLock;
+    if (nextDraftLock === state.draftLock) {
+      return state;
+    }
+    return {
+      ...state,
+      draftLock: nextDraftLock,
+    };
+  },
   'pipeline.state': (state) => state,
   'ghost.trigger': (state) => state,
   [WAREHOUSE_ADD_INTENT]: (state) => state,

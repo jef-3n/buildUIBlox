@@ -323,7 +323,7 @@ export class CompiledCanvas extends LitElement {
     if (!this.ghostAuthority) {
       return;
     }
-    const { path, rect } = event.detail;
+    const { path, rect, hotspotId } = event.detail;
     if (path) {
       const envelope = createHostEventEnvelope(
         'selection.set',

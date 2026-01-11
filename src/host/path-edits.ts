@@ -77,7 +77,7 @@ export const normalizeDraftBindingPath = (path: string) => {
 
 const isBlockedRootPath = (segments: string[]) => {
   if (!segments.length) return true;
-  if (!isDraftStylerPath(segments)) return true;
+  if (!isDraftStylerPath(segments) && !isDraftBindingPath(segments)) return true;
   if (segments[0] === 'elements' && segments.length === 2) return true;
   if (segments[0] === 'elements' && segments.length === 3) return true;
   return false;
