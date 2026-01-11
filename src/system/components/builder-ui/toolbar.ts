@@ -1,15 +1,31 @@
 import { LitElement, css, html } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import {
   HOST_EVENT_ENVELOPE_EVENT,
+  PIPELINE_ABORT_BUILD,
+  PIPELINE_PUBLISH_VERSION,
+  PIPELINE_TRIGGER_BUILD,
   UI_SET_SCALE,
   createHostEventEnvelope,
+  type HostEventPayloadMap,
 } from '../../../contracts/event-envelope';
 
 @customElement('builder-toolbar')
 export class BuilderToolbar extends LitElement {
+  @property({ type: String })
+  draftId?: string;
+
+  @property({ type: String })
+  compiledId?: string;
+
   @state()
   private scale = 1;
+
+  @state()
+  private publishTag = '';
+
+  @state()
+  private publishNotes = '';
 
   static styles = css`
     :host {
@@ -72,6 +88,27 @@ export class BuilderToolbar extends LitElement {
       padding: 0.25rem 0.4rem;
       font-size: 0.75rem;
     }
+
+    input {
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.7rem;
+    }
+
+    .pipeline {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .publish {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
   `;
 
   private handleScaleChange(event: Event) {
@@ -99,6 +136,63 @@ export class BuilderToolbar extends LitElement {
     );
   }
 
+  private emitPipelineEnvelope<
+    T extends
+      | typeof PIPELINE_TRIGGER_BUILD
+      | typeof PIPELINE_ABORT_BUILD
+      | typeof PIPELINE_PUBLISH_VERSION,
+  >(type: T, payload: HostEventPayloadMap[T]) {
+    const envelope = createHostEventEnvelope(type, payload, 'builder-toolbar');
+    this.dispatchEvent(
+      new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
+        detail: envelope,
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  private handlePipelineTrigger() {
+    if (!this.draftId) {
+      return;
+    }
+    this.emitPipelineEnvelope(PIPELINE_TRIGGER_BUILD, { draftId: this.draftId });
+  }
+
+  private handlePipelineAbort() {
+    this.emitPipelineEnvelope(PIPELINE_ABORT_BUILD, {});
+  }
+
+  private handlePublishTagChange(event: Event) {
+    const target = event.currentTarget as HTMLInputElement | null;
+    if (!target) {
+      return;
+    }
+    this.publishTag = target.value;
+  }
+
+  private handlePublishNotesChange(event: Event) {
+    const target = event.currentTarget as HTMLInputElement | null;
+    if (!target) {
+      return;
+    }
+    this.publishNotes = target.value;
+  }
+
+  private handlePipelinePublish() {
+    const tag = this.publishTag.trim();
+    if (!tag) {
+      return;
+    }
+    const notes = this.publishNotes.trim();
+    this.emitPipelineEnvelope(PIPELINE_PUBLISH_VERSION, {
+      tag,
+      notes: notes ? notes : undefined,
+      draftId: this.draftId,
+      compiledId: this.compiledId,
+    });
+  }
+
   render() {
     return html`
       <div class="title">Compiled Toolbar</div>
@@ -106,6 +200,27 @@ export class BuilderToolbar extends LitElement {
         <button type="button">Insert</button>
         <button type="button">Preview</button>
         <button type="button">Publish</button>
+      </div>
+      <div class="pipeline">
+        <button type="button" @click=${this.handlePipelineTrigger}>
+          Trigger Build
+        </button>
+        <button type="button" @click=${this.handlePipelineAbort}>Abort</button>
+        <div class="publish">
+          <input
+            type="text"
+            placeholder="Tag"
+            .value=${this.publishTag}
+            @input=${this.handlePublishTagChange}
+          />
+          <input
+            type="text"
+            placeholder="Notes"
+            .value=${this.publishNotes}
+            @input=${this.handlePublishNotesChange}
+          />
+          <button type="button" @click=${this.handlePipelinePublish}>Publish</button>
+        </div>
       </div>
       <div class="control">
         <label for="scale-select">Scale</label>

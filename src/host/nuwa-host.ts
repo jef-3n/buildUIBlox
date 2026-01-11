@@ -20,9 +20,9 @@ import {
   BINDING_UPDATE_PROP,
   GHOST_MAP_EDIT,
   HOST_EVENT_ENVELOPE_EVENT,
-  PIPELINE_ABORT,
-  PIPELINE_PUBLISH,
-  PIPELINE_TRIGGER,
+  PIPELINE_ABORT_BUILD,
+  PIPELINE_PUBLISH_VERSION,
+  PIPELINE_TRIGGER_BUILD,
   STYLER_UPDATE_PROP,
   createHostEventEnvelope,
   isCompatibleHostEventEnvelope,
@@ -107,6 +107,8 @@ export class NuwaHost extends LitElement {
   );
   private draftStoreUnsubscribe?: () => void;
   private compiledStoreUnsubscribe?: () => void;
+  private autoCompileTimer?: number;
+  private autoCompileDraftId?: string;
   private slotLoadSequence: Record<HostSlotName, number> = {
     top: 0,
     left: 0,
@@ -245,6 +247,7 @@ export class NuwaHost extends LitElement {
     );
     this.sharedSession.disconnect();
     this.disconnectArtifactStores();
+    this.clearAutoCompileTimer();
     super.disconnectedCallback();
   }
 
@@ -335,6 +338,10 @@ export class NuwaHost extends LitElement {
           .draftId=${this.hostState.draft.metadata.draftId}
         ></${tag}>`;
       case 'top':
+        return staticHtml`<${tag}
+          .draftId=${this.hostState.draft.metadata.draftId}
+          .compiledId=${this.hostState.artifact.compiledId}
+        ></${tag}>`;
       case 'left':
       default:
         return staticHtml`<${tag}></${tag}>`;
@@ -624,15 +631,15 @@ export class NuwaHost extends LitElement {
 
   private applyPipelineEvent(envelope: HostEventEnvelope) {
     switch (envelope.type) {
-      case PIPELINE_TRIGGER: {
+      case PIPELINE_TRIGGER_BUILD: {
         this.sharedSession.triggerPipeline(envelope.payload.draftId);
         return true;
       }
-      case PIPELINE_ABORT: {
+      case PIPELINE_ABORT_BUILD: {
         this.sharedSession.abortPipeline(envelope.payload.reason);
         return true;
       }
-      case PIPELINE_PUBLISH: {
+      case PIPELINE_PUBLISH_VERSION: {
         const draftId = envelope.payload.draftId ?? this.hostState.draft.metadata.draftId;
         const draft =
           this.hostState.draft.metadata.draftId === draftId
@@ -643,7 +650,10 @@ export class NuwaHost extends LitElement {
           baseArtifact: this.hostState.artifact,
         });
         this.compiledStore.write(compiled, 'local');
-        this.sharedSession.publishPipeline(compiled.compiledId);
+        this.sharedSession.publishPipeline(compiled.compiledId, {
+          tag: envelope.payload.tag,
+          notes: envelope.payload.notes,
+        });
         const nextState = {
           ...this.hostState,
           artifact: compiled,
@@ -758,6 +768,7 @@ export class NuwaHost extends LitElement {
       nextState.draft !== prevState.draft
     ) {
       this.draftStore.write(nextState.draft, 'local');
+      this.queueAutoCompile(nextState.draft.metadata.draftId);
     }
     if (event.type === GHOST_MAP_EDIT && nextState.artifact !== prevState.artifact) {
       this.compiledStore.write(nextState.artifact, 'local');
@@ -828,6 +839,7 @@ export class NuwaHost extends LitElement {
     if (snapshot.draftId !== this.sharedSession.state.draftId) {
       this.sharedSession.update({ draftId: snapshot.draftId });
     }
+    this.queueAutoCompile(snapshot.draftId);
   };
 
   private handleCompiledStoreUpdate = (
@@ -851,6 +863,37 @@ export class NuwaHost extends LitElement {
       });
     }
   };
+
+  private queueAutoCompile(draftId: string) {
+    if (this.hostState.draftLock.locked) {
+      return;
+    }
+    if (this.sharedSession.state.pipeline?.status === 'compiling') {
+      return;
+    }
+    this.autoCompileDraftId = draftId;
+    this.clearAutoCompileTimer();
+    this.autoCompileTimer = globalThis.setTimeout(() => {
+      this.autoCompileTimer = undefined;
+      if (this.hostState.draftLock.locked) {
+        return;
+      }
+      if (this.sharedSession.state.pipeline?.status === 'compiling') {
+        return;
+      }
+      const targetDraftId = this.autoCompileDraftId ?? this.hostState.draft.metadata.draftId;
+      this.autoCompileDraftId = undefined;
+      this.sharedSession.triggerPipeline(targetDraftId);
+    }, 600);
+  }
+
+  private clearAutoCompileTimer() {
+    if (typeof this.autoCompileTimer === 'undefined') {
+      return;
+    }
+    globalThis.clearTimeout(this.autoCompileTimer);
+    this.autoCompileTimer = undefined;
+  }
 }
 
 type HostEventHandlerMap = {
@@ -1080,9 +1123,9 @@ const hostEventHandlers: HostEventHandlerMap = {
     };
   },
   'pipeline.state': (state) => state,
-  [PIPELINE_TRIGGER]: (state) => state,
-  [PIPELINE_ABORT]: (state) => state,
-  [PIPELINE_PUBLISH]: (state) => state,
+  [PIPELINE_TRIGGER_BUILD]: (state) => state,
+  [PIPELINE_ABORT_BUILD]: (state) => state,
+  [PIPELINE_PUBLISH_VERSION]: (state) => state,
   [GHOST_MAP_EDIT]: (state, event) => {
     const sourceGhostMap =
       state.draft.assets.ghostMap ?? state.artifact.runtime.ghostMap ?? [];
