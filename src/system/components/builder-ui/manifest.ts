@@ -21,16 +21,40 @@ export type BuilderUiBootstrapState = {
   versionPin?: string;
   fallbackRegistry: BuilderUiRegistryKey;
   snapshots: BuilderUiRegistrySnapshot[];
+  publishHistory: BuilderUiPublishRecord[];
+  rollbackHistory: BuilderUiRollbackRecord[];
+};
+
+export type BuilderUiPublishRecord = {
+  version: string;
+  tag: string;
+  notes?: string;
+  publishedAt: string;
+};
+
+export type BuilderUiRollbackRecord = {
+  fromVersion?: string;
+  toVersion: string;
+  reason?: string;
+  rolledBackAt: string;
+};
+
+export type BuilderUiPublishMetadata = {
+  tag: string;
+  notes?: string;
+  publishedAt: string;
 };
 
 export type BuilderUiBootstrapSnapshotState = Omit<BuilderUiBootstrapState, 'snapshots'>;
 
 export type BuilderUiRegistrySnapshot = {
   version: string;
+  path: string;
   boundary: string;
   activeRegistry: BuilderUiRegistryKey;
   registry: BuilderUiRegistry;
   bootstrap: BuilderUiBootstrapSnapshotState;
+  publish?: BuilderUiPublishMetadata;
 };
 
 export type BuilderUiManifest = {
@@ -107,6 +131,8 @@ export const createBuilderUiManifest = (
       activeRegistry: 'local',
       fallbackRegistry: 'local',
       snapshots: [],
+      publishHistory: [],
+      rollbackHistory: [],
     },
     registries: {
       local: {

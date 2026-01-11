@@ -6,6 +6,9 @@ import type {
   BuilderUiRegistrySnapshot,
   BuilderUiBootstrapState,
   BuilderUiBootstrapSnapshotState,
+  BuilderUiPublishMetadata,
+  BuilderUiPublishRecord,
+  BuilderUiRollbackRecord,
 } from './manifest';
 import { validateBuilderUiManifest } from './manifest';
 
@@ -15,6 +18,10 @@ export type BuilderUiRegistryLoadResult =
 
 const LIVE_BOOTSTRAP_VERSION = 'live';
 
+const SNAPSHOT_PATH_PREFIX = '/system/components/builder-ui/snapshots';
+
+const createSnapshotPath = (version: string) => `${SNAPSHOT_PATH_PREFIX}/${version}/manifest.json`;
+
 const toBootstrapSnapshot = (
   bootstrap: BuilderUiBootstrapState
 ): BuilderUiBootstrapSnapshotState => {
@@ -22,10 +29,30 @@ const toBootstrapSnapshot = (
   return rest;
 };
 
+const toPublishRecord = (metadata: BuilderUiPublishMetadata, version: string): BuilderUiPublishRecord => ({
+  version,
+  tag: metadata.tag,
+  notes: metadata.notes,
+  publishedAt: metadata.publishedAt,
+});
+
+const toRollbackRecord = (
+  version: string,
+  previousVersion?: string,
+  reason?: string,
+  rolledBackAt: string = new Date().toISOString()
+): BuilderUiRollbackRecord => ({
+  fromVersion: previousVersion,
+  toVersion: version,
+  reason,
+  rolledBackAt,
+});
+
 export const createBuilderUiRegistrySnapshot = (
   manifest: BuilderUiManifest,
   version: string,
-  registryKey: BuilderUiRegistryKey = manifest.activeRegistry
+  registryKey: BuilderUiRegistryKey = manifest.activeRegistry,
+  publish?: BuilderUiPublishMetadata
 ): BuilderUiRegistrySnapshot | undefined => {
   const registry = manifest.registries[registryKey];
   if (!registry) {
@@ -33,10 +60,12 @@ export const createBuilderUiRegistrySnapshot = (
   }
   return {
     version,
+    path: createSnapshotPath(version),
     boundary: manifest.boundary,
     activeRegistry: registryKey,
     registry,
     bootstrap: toBootstrapSnapshot(manifest.bootstrap),
+    publish,
   };
 };
 
@@ -53,12 +82,14 @@ export const pinBuilderUiBootstrapVersion = (
 
 export const applyBuilderUiBootstrapFullClosure = (
   manifest: BuilderUiManifest,
-  version: string
+  version: string,
+  publish?: BuilderUiPublishMetadata
 ): BuilderUiManifest => {
   const snapshot = createBuilderUiRegistrySnapshot(
     manifest,
     version,
-    manifest.bootstrap.activeRegistry
+    manifest.bootstrap.activeRegistry,
+    publish
   );
   const snapshots = snapshot
     ? [
@@ -66,6 +97,12 @@ export const applyBuilderUiBootstrapFullClosure = (
         snapshot,
       ]
     : manifest.bootstrap.snapshots;
+  const publishHistory = publish
+    ? [
+        ...manifest.bootstrap.publishHistory.filter((entry) => entry.version !== version),
+        toPublishRecord(publish, version),
+      ]
+    : manifest.bootstrap.publishHistory;
 
   return {
     ...manifest,
@@ -75,6 +112,7 @@ export const applyBuilderUiBootstrapFullClosure = (
       isSelfHosting: true,
       versionPin: version,
       snapshots,
+      publishHistory,
     },
   };
 };
@@ -139,6 +177,7 @@ export const loadBuilderUiRegistry = (manifest: BuilderUiManifest): BuilderUiReg
   const snapshot =
     createBuilderUiRegistrySnapshot(manifest, LIVE_BOOTSTRAP_VERSION, registry.key) ?? {
       version: LIVE_BOOTSTRAP_VERSION,
+      path: createSnapshotPath(LIVE_BOOTSTRAP_VERSION),
       boundary: manifest.boundary,
       activeRegistry: registry.key,
       registry,
@@ -156,3 +195,20 @@ export const canLoadBuilderUiRegistryInIsolation = (manifest: BuilderUiManifest)
   const result = loadBuilderUiRegistry(manifest);
   return result.ok;
 };
+
+export const rollbackBuilderUiBootstrapVersion = (
+  manifest: BuilderUiManifest,
+  version: string,
+  reason?: string,
+  rolledBackAt: string = new Date().toISOString()
+): BuilderUiManifest => ({
+  ...manifest,
+  bootstrap: {
+    ...manifest.bootstrap,
+    versionPin: version,
+    rollbackHistory: [
+      ...manifest.bootstrap.rollbackHistory,
+      toRollbackRecord(version, manifest.bootstrap.versionPin, reason, rolledBackAt),
+    ],
+  },
+});
