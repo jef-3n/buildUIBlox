@@ -11,8 +11,7 @@ export type ArtifactResource = 'globalSession' | 'draft' | 'compiled';
 export const ARTIFACT_PATHS = {
   globalSession: (appId: string) => `/artifacts/${appId}/public/data/globalSession`,
   draft: (appId: string, draftId: string) => `/artifacts/${appId}/public/data/drafts/${draftId}`,
-  compiled: (appId: string, compiledId: string) =>
-    `/artifacts/${appId}/public/data/compiled/${compiledId}`,
+  compiled: (_appId: string, compiledId: string) => `/compiled/${compiledId}`,
 } as const;
 
 export const ARTIFACT_ACCESS_POLICIES: Record<

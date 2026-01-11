@@ -12,7 +12,7 @@ type CompileOptions = {
   baseArtifact?: CompiledArtifact;
 };
 
-const createCompiledId = (draftId: string) =>
+export const createCompiledId = (draftId: string) =>
   `compiled-${draftId}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 
 const cloneNode = (node: CompiledNode): CompiledNode => ({

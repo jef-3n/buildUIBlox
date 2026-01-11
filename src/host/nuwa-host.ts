@@ -657,7 +657,7 @@ export class NuwaHost extends LitElement {
   private applyPipelineEvent(envelope: HostEventEnvelope) {
     switch (envelope.type) {
       case PIPELINE_TRIGGER_BUILD: {
-        this.sharedSession.triggerPipeline(envelope.payload.draftId);
+        void this.sharedSession.triggerPipeline(envelope.payload.draftId);
         return true;
       }
       case PIPELINE_ABORT_BUILD: {
@@ -665,25 +665,26 @@ export class NuwaHost extends LitElement {
         return true;
       }
       case PIPELINE_PUBLISH_VERSION: {
-        const draftId = envelope.payload.draftId ?? this.hostState.draft.metadata.draftId;
-        const draft =
-          this.hostState.draft.metadata.draftId === draftId
-            ? this.hostState.draft
-            : this.draftStore.read();
-        const compiled = compileDraftArtifact(draft, {
-          compiledId: envelope.payload.compiledId,
-          baseArtifact: this.hostState.artifact,
-        });
-        this.compiledStore.write(compiled, 'local');
-        this.sharedSession.publishPipeline(compiled.compiledId, {
+        const targetCompiledId =
+          envelope.payload.compiledId ??
+          this.sharedSession.state.pipeline?.compiledId ??
+          this.hostState.artifact.compiledId;
+        const compiledSnapshot = this.compiledStore.read();
+        const compiled =
+          compiledSnapshot.compiledId === targetCompiledId
+            ? compiledSnapshot
+            : this.hostState.artifact;
+        void this.sharedSession.publishPipeline(compiled, {
           tag: envelope.payload.tag,
           notes: envelope.payload.notes,
         });
-        const nextState = {
-          ...this.hostState,
-          artifact: compiled,
-        };
-        this.commitHostState(envelope, nextState, this.hostState);
+        if (compiled.compiledId !== this.hostState.artifact.compiledId) {
+          const nextState = {
+            ...this.hostState,
+            artifact: compiled,
+          };
+          this.commitHostState(envelope, nextState, this.hostState);
+        }
         return true;
       }
       default:
@@ -917,7 +918,7 @@ export class NuwaHost extends LitElement {
       }
       const targetDraftId = this.autoCompileDraftId ?? this.hostState.draft.metadata.draftId;
       this.autoCompileDraftId = undefined;
-      this.sharedSession.triggerPipeline(targetDraftId);
+      void this.sharedSession.triggerPipeline(targetDraftId);
     }, 600);
   }
 
