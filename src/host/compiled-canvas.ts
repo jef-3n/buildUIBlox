@@ -227,7 +227,13 @@ export class CompiledCanvas extends LitElement {
 
     const tag =
       node.props?.tag ??
-      (node.type === 'text' ? 'span' : node.type === 'section' ? 'section' : 'div');
+      (node.type === 'text'
+        ? 'span'
+        : node.type === 'section'
+          ? 'section'
+          : node.type === 'button'
+            ? 'button'
+            : 'div');
     const tagName = unsafeStatic(tag);
 
     return staticHtml`
@@ -243,7 +249,7 @@ export class CompiledCanvas extends LitElement {
     dataContext: Record<string, unknown>,
     frameName: FrameName
   ) {
-    if (node.type === 'text') {
+    if (node.type === 'text' || node.type === 'button') {
       const boundText = getPathValue(dataContext, node.props?.textPath);
       return boundText ?? node.props?.text ?? '';
     }
@@ -284,6 +290,7 @@ export class CompiledCanvas extends LitElement {
     const style = {
       gridArea: placement?.area,
       ...resolveStyler(node.props?.styler, frameName),
+      ...resolveDraftStyler(this.draft, nodeId, frameName),
     };
 
     const classes = classMap(
@@ -296,7 +303,10 @@ export class CompiledCanvas extends LitElement {
         ? { 'repeater-item': true, [templateNode.props.className]: true }
         : { 'repeater-item': true }
     );
-    const itemStyle = resolveStyler(templateNode.props?.styler, this.activeFrame);
+    const itemStyle = {
+      ...resolveStyler(templateNode.props?.styler, this.activeFrame),
+      ...resolveDraftStyler(this.draft, templateId, frameName),
+    };
     const templateTag = templateNode.props?.tag ?? 'div';
     const templateTagName = unsafeStatic(templateTag);
     const templateChildren = templateNode.children ?? [];
