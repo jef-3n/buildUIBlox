@@ -1,7 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { styleMap } from 'lit/directives/style-map.js';
 import { buildElementPath } from '../host/paths';
 import type { FrameName } from '../host/frame-types';
 
@@ -78,24 +77,28 @@ export class GhostLayer extends LitElement {
   @property({ type: Boolean, attribute: 'interaction-authority', reflect: true })
   interactionAuthority = true;
 
+  private hotspotById = new Map<string, GhostHotspot>();
+
+  protected willUpdate(changedProperties: Map<PropertyKey, unknown>) {
+    if (changedProperties.has('ghostMap')) {
+      this.hotspotById = new Map(this.ghostMap.map((hotspot) => [hotspot.id, hotspot]));
+    }
+  }
+
   render() {
     return html`
       ${repeat(
         this.ghostMap,
         (hotspot) => hotspot.id,
         (hotspot) => {
-          const style = {
-            left: `${hotspot.rect.x}px`,
-            top: `${hotspot.rect.y}px`,
-            width: `${hotspot.rect.w}px`,
-            height: `${hotspot.rect.h}px`,
-          };
+          const style = `left:${hotspot.rect.x}px;top:${hotspot.rect.y}px;width:${hotspot.rect.w}px;height:${hotspot.rect.h}px;`;
 
           return html`
             <div
               class="hotspot"
-              style=${styleMap(style)}
-              @click=${(event: MouseEvent) => this.handleHotspotClick(event, hotspot)}
+              data-hotspot-id=${hotspot.id}
+              style=${style}
+              @click=${this.handleHotspotClick}
             ></div>
           `;
         }
@@ -103,7 +106,7 @@ export class GhostLayer extends LitElement {
     `;
   }
 
-  private handleHotspotClick(event: MouseEvent, hotspot: GhostHotspot) {
+  private handleHotspotClick(event: MouseEvent) {
     if (!this.interactionAuthority) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -111,6 +114,11 @@ export class GhostLayer extends LitElement {
     }
 
     const target = event.currentTarget as HTMLElement | null;
+    const hotspotId = target?.dataset.hotspotId;
+    const hotspot = hotspotId ? this.hotspotById.get(hotspotId) : undefined;
+    if (!hotspot) {
+      return;
+    }
     const rect = target?.getBoundingClientRect();
     const path = hotspot.path ?? buildElementPath(hotspot.id);
 
