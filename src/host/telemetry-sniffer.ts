@@ -1,6 +1,11 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { ObservationCategory, ObservationPacket } from './telemetry';
+import {
+  HOST_EVENT_ENVELOPE_EVENT,
+  type HostEventEnvelope,
+} from '../contracts/event-envelope';
+import { resolveObservationCategory } from './observation';
 
 @customElement('telemetry-sniffer')
 export class TelemetrySniffer extends LitElement {
@@ -19,22 +24,33 @@ export class TelemetrySniffer extends LitElement {
   @state()
   private packets: ObservationPacket[] = [];
 
+  private eventSequence = 0;
+
   private handleObservation = (event: Event) => {
-    const detail = (event as CustomEvent<ObservationPacket>).detail;
+    const detail = (event as CustomEvent<HostEventEnvelope>).detail;
     if (!detail) {
       return;
     }
-    const next = [detail, ...this.packets].slice(0, 12);
+    const packet: ObservationPacket = {
+      id: detail.id,
+      sequence: ++this.eventSequence,
+      emittedAt: detail.createdAt,
+      source: detail.source,
+      category: resolveObservationCategory(detail),
+      event: detail.type,
+      payload: {},
+    };
+    const next = [packet, ...this.packets].slice(0, 12);
     this.packets = next;
   };
 
   connectedCallback() {
     super.connectedCallback();
-    this.ownerDocument.addEventListener('OBSERVATION_PACKET', this.handleObservation);
+    this.ownerDocument.addEventListener(HOST_EVENT_ENVELOPE_EVENT, this.handleObservation);
   }
 
   disconnectedCallback() {
-    this.ownerDocument.removeEventListener('OBSERVATION_PACKET', this.handleObservation);
+    this.ownerDocument.removeEventListener(HOST_EVENT_ENVELOPE_EVENT, this.handleObservation);
     super.disconnectedCallback();
   }
 

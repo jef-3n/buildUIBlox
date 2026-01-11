@@ -4,7 +4,7 @@ export type ObservationPacket = {
   id: string;
   sequence: number;
   emittedAt: string;
-  source: 'nuwa-host';
+  source: string;
   category: ObservationCategory;
   event: string;
   payload: Record<string, unknown>;

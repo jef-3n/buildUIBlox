@@ -1,34 +1,18 @@
 import type { FrameName } from './frame-types';
+import {
+  GLOBAL_SESSION_SCHEMA_VERSION,
+  type GlobalPresenceState,
+  type GlobalSessionSnapshot,
+  type GlobalSessionUpdate,
+  isCompatibleGlobalSessionUpdate,
+} from '../contracts/global-session';
+import type { ActiveSurface } from '../contracts/ui-state';
 
-export type ActiveSurface = 'canvas' | 'frames' | 'metadata' | 'telemetry' | 'unknown';
+export type PresenceState = GlobalPresenceState;
 
-export type PresenceState = {
-  sessionId: string;
-  activeFrame: FrameName;
-  selectionPath?: string;
-  activeSurface: ActiveSurface;
-  lastSeenAt: string;
-  isLocal: boolean;
-};
+export type SharedSessionSnapshot = GlobalSessionSnapshot;
 
-export type SharedSessionSnapshot = {
-  sessionId: string;
-  revision: number;
-  updatedAt: string;
-  activeFrame: FrameName;
-  selectionPath?: string;
-  activeSurface: ActiveSurface;
-  presence: Record<string, PresenceState>;
-};
-
-type SharedSessionUpdate = {
-  sessionId: string;
-  revision: number;
-  updatedAt: string;
-  activeFrame: FrameName;
-  selectionPath?: string;
-  activeSurface: ActiveSurface;
-};
+type SharedSessionUpdate = GlobalSessionUpdate;
 
 export type SharedSessionEventDetail = {
   state: SharedSessionSnapshot;
@@ -85,6 +69,7 @@ export class SharedSession extends EventTarget {
     const sessionId = createSessionId();
     const updatedAt = new Date().toISOString();
     this.state = {
+      schemaVersion: GLOBAL_SESSION_SCHEMA_VERSION,
       sessionId,
       revision: 0,
       updatedAt,
@@ -94,6 +79,7 @@ export class SharedSession extends EventTarget {
       presence: {
         [sessionId]: buildPresenceEntry(
           {
+            schemaVersion: GLOBAL_SESSION_SCHEMA_VERSION,
             sessionId,
             revision: 0,
             updatedAt,
@@ -139,6 +125,7 @@ export class SharedSession extends EventTarget {
     }
 
     const update: SharedSessionUpdate = {
+      schemaVersion: GLOBAL_SESSION_SCHEMA_VERSION,
       sessionId: this.state.sessionId,
       revision: this.state.revision + 1,
       updatedAt: new Date().toISOString(),
@@ -151,7 +138,10 @@ export class SharedSession extends EventTarget {
 
   private handleChannelMessage = (event: MessageEvent<SharedSessionUpdate>) => {
     const update = event.data;
-    if (!update || update.sessionId === this.state.sessionId) {
+    if (!isCompatibleGlobalSessionUpdate(update)) {
+      return;
+    }
+    if (update.sessionId === this.state.sessionId) {
       return;
     }
     this.applyUpdate(update, 'remote');
@@ -188,6 +178,7 @@ export class SharedSession extends EventTarget {
 
     this.state = {
       ...this.state,
+      schemaVersion: GLOBAL_SESSION_SCHEMA_VERSION,
       revision: update.revision,
       updatedAt: update.updatedAt,
       activeFrame: update.activeFrame,

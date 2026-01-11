@@ -6,6 +6,10 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import '../ghost/ghost-layer';
 import type { GhostHotspot, GhostSelectDetail, GhostTriggerDetail } from '../ghost/ghost-layer';
+import {
+  HOST_EVENT_ENVELOPE_EVENT,
+  createHostEventEnvelope,
+} from '../contracts/event-envelope';
 import { getElementIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
 import type { FrameName } from './frame-types';
@@ -18,9 +22,6 @@ import {
 
 export type { CompiledArtifact, CompiledFrame, CompiledNode } from './compiled-contract';
 export { COMPILED_SCHEMA_VERSION, isCompatibleCompiledArtifact } from './compiled-contract';
-
-type GhostSelectionEventDetail = GhostSelectDetail & { source: 'ghost' };
-type GhostTriggerEventEnvelope = GhostTriggerDetail & { source: 'ghost' };
 
 type StyleValue = string | number;
 
@@ -286,9 +287,14 @@ export class CompiledCanvas extends LitElement {
     }
     const { path, rect, hotspotId } = event.detail;
     if (path) {
+      const envelope = createHostEventEnvelope(
+        'selection.set',
+        { path, rect, hotspotId, source: 'ghost' },
+        'compiled-canvas'
+      );
       this.dispatchEvent(
-        new CustomEvent<GhostSelectionEventDetail>('SELECTION_SET', {
-          detail: { path, rect, hotspotId, source: 'ghost' },
+        new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
+          detail: envelope,
           bubbles: true,
           composed: true,
         })
@@ -302,9 +308,14 @@ export class CompiledCanvas extends LitElement {
       return;
     }
     const { type, payload, path, rect, hotspotId } = event.detail;
+    const envelope = createHostEventEnvelope(
+      'ghost.trigger',
+      { type, payload, path, rect, hotspotId, source: 'ghost' },
+      'compiled-canvas'
+    );
     this.dispatchEvent(
-      new CustomEvent<GhostTriggerEventEnvelope>('GHOST_HOTSPOT_TRIGGER', {
-        detail: { type, payload, path, rect, hotspotId, source: 'ghost' },
+      new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
+        detail: envelope,
         bubbles: true,
         composed: true,
       })
