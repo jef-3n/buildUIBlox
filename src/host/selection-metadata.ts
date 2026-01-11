@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { getElementIdFromPath } from './paths';
+import { getNodeIdFromPath } from './paths';
 import {
   isCompatibleCompiledArtifact,
   type CompiledArtifact,
@@ -112,7 +112,7 @@ export class SelectionMetadata extends LitElement {
       return html`<div class="panel"><div class="empty">Select a node to see metadata.</div></div>`;
     }
 
-    const nodeId = getElementIdFromPath(this.selectedPath);
+    const nodeId = getNodeIdFromPath(this.selectedPath);
     const node = this.artifact.runtime.nodes[nodeId];
 
     if (!node) {

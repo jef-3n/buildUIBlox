@@ -72,14 +72,14 @@ export const buildObservationPayload = (
         path: event.payload.path,
         frame: event.payload.frame ?? nextState.ui.activeFrame,
         compiledId: nextState.artifact.compiledId,
-        draftId: nextState.draft.draftId,
+        draftId: nextState.draft.metadata.draftId,
         activeSurface: nextState.ui.activeSurface,
       };
     case BINDING_UPDATE_PROP:
       return {
         path: event.payload.path,
         compiledId: nextState.artifact.compiledId,
-        draftId: nextState.draft.draftId,
+        draftId: nextState.draft.metadata.draftId,
         activeSurface: nextState.ui.activeSurface,
       };
     case UI_SET_SCALE:

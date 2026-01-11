@@ -27,7 +27,7 @@ const hasStylerFrameSegment = (segments: string[], index: number) => {
 
 const isDraftStylerPath = (segments: string[]) => {
   return (
-    segments[0] === 'elements' &&
+    segments[0] === 'nodes' &&
     segments.length >= 4 &&
     segments[2] === 'props' &&
     segments[3] === 'styler'
@@ -36,7 +36,7 @@ const isDraftStylerPath = (segments: string[]) => {
 
 const isDraftBindingPath = (segments: string[]) => {
   return (
-    segments[0] === 'elements' &&
+    segments[0] === 'nodes' &&
     segments.length >= 4 &&
     segments[2] === 'props' &&
     segments[3] === 'bindings'
@@ -78,8 +78,8 @@ export const normalizeDraftBindingPath = (path: string) => {
 const isBlockedRootPath = (segments: string[]) => {
   if (!segments.length) return true;
   if (!isDraftStylerPath(segments) && !isDraftBindingPath(segments)) return true;
-  if (segments[0] === 'elements' && segments.length === 2) return true;
-  if (segments[0] === 'elements' && segments.length === 3) return true;
+  if (segments[0] === 'nodes' && segments.length === 2) return true;
+  if (segments[0] === 'nodes' && segments.length === 3) return true;
   return false;
 };
 

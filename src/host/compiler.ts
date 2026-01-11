@@ -30,7 +30,7 @@ const applyDraftStyling = (
   draft: DraftArtifact,
   nodes: Record<string, CompiledNode>
 ) => {
-  for (const [nodeId, nodeDraft] of Object.entries(draft.elements)) {
+  for (const [nodeId, nodeDraft] of Object.entries(draft.nodes)) {
     const node = nodes[nodeId];
     if (!node) {
       continue;
@@ -43,39 +43,58 @@ const applyDraftStyling = (
   }
 };
 
+const compileNodeProps = (draftNode: DraftArtifact['nodes'][string]) => {
+  if (!draftNode.props) {
+    return undefined;
+  }
+  const { bindings, styler, ...rest } = draftNode.props;
+  const boundProps = bindings ? { ...bindings } : {};
+  return {
+    ...rest,
+    ...boundProps,
+    ...(styler ? { styler } : {}),
+  } satisfies CompiledNode['props'];
+};
+
 const buildRuntimeFromDraft = (draft: DraftArtifact) => {
-  const nodeIds = Object.keys(draft.elements);
+  const nodeIds = Object.keys(draft.nodes);
   const nodes = Object.fromEntries(
     nodeIds.map((nodeId) => [
       nodeId,
       {
-        type: 'box',
-        props: {
-          styler: draft.elements[nodeId]?.props?.styler ?? {},
-        },
+        type: draft.nodes[nodeId]?.type ?? 'box',
+        props: compileNodeProps(draft.nodes[nodeId]),
+        children: draft.nodes[nodeId]?.children,
       } satisfies CompiledNode,
     ])
   );
-  const placements = Object.fromEntries(nodeIds.map((nodeId) => [nodeId, {}]));
-  const frame: CompiledFrame = {
+
+  const hasFrames = Object.keys(draft.frames).length > 0;
+  const defaultPlacements = Object.fromEntries(nodeIds.map((nodeId) => [nodeId, {}]));
+  const defaultFrame: CompiledFrame = {
     grid: {
       columns: 'minmax(0, 1fr)',
       rows: `repeat(${Math.max(1, nodeIds.length)}, auto)`,
       areas: nodeIds.length ? nodeIds.map((id) => `"${id}"`) : ['"root"'],
     },
     order: nodeIds,
-    placements,
+    placements: defaultPlacements,
   };
+
+  const frames = hasFrames
+    ? (draft.frames as Partial<Record<FrameName, CompiledFrame>>)
+    : ({
+        desktop: defaultFrame,
+        tablet: defaultFrame,
+        mobile: defaultFrame,
+      } satisfies Partial<Record<FrameName, CompiledFrame>>);
+
   return {
     nodes,
     layout: {
-      frames: {
-        desktop: frame,
-        tablet: frame,
-        mobile: frame,
-      } satisfies Partial<Record<FrameName, CompiledFrame>>,
+      frames,
     },
-    ghostMap: draft.ghostMap,
+    ghostMap: draft.assets.ghostMap,
   };
 };
 
@@ -83,20 +102,20 @@ export const compileDraftArtifact = (
   draft: DraftArtifact,
   options: CompileOptions = {}
 ): CompiledArtifact => {
-  const compiledId = options.compiledId ?? createCompiledId(draft.draftId);
+  const compiledId = options.compiledId ?? createCompiledId(draft.metadata.draftId);
   const baseArtifact = options.baseArtifact;
   const runtime = baseArtifact ? baseArtifact.runtime : buildRuntimeFromDraft(draft);
   const nextNodes = Object.fromEntries(
     Object.entries(runtime.nodes).map(([id, node]) => [id, cloneNode(node)])
   );
   applyDraftStyling(draft, nextNodes);
-  const ghostMap = draft.ghostMap ?? runtime.ghostMap;
+  const ghostMap = draft.assets.ghostMap ?? runtime.ghostMap;
 
   return {
     schemaVersion: COMPILED_SCHEMA_VERSION,
     compiledId,
-    draftId: draft.draftId,
-    appId: draft.appId,
+    draftId: draft.metadata.draftId,
+    appId: draft.metadata.appId,
     compiledAt: new Date().toISOString(),
     css: baseArtifact?.css ?? '',
     runtime: {
@@ -105,7 +124,7 @@ export const compileDraftArtifact = (
       ghostMap,
     },
     integrity: {
-      sourceHash: `${draft.draftId}:${draft.updatedAt}`,
+      sourceHash: `${draft.metadata.draftId}:${draft.metadata.updatedAt}`,
       compilerVersion: 'local-compiler',
     },
   };

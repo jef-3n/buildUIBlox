@@ -44,28 +44,28 @@ export const sampleCompiledArtifact: CompiledArtifact = {
         frame: 'desktop',
         rect: { x: 0, y: 0, w: 360, h: 48 },
         emitter: 'OPEN_HEADER_PANEL',
-        path: 'elements.header',
+        path: 'nodes.header',
       },
       {
         id: 'hero-hotspot',
         frame: 'desktop',
         rect: { x: 0, y: 72, w: 640, h: 140 },
         emitter: { type: 'OPEN_HERO_DETAILS', payload: { section: 'hero' } },
-        path: 'elements.hero',
+        path: 'nodes.hero',
       },
       {
         id: 'list-hotspot',
         frame: 'desktop',
         rect: { x: 0, y: 240, w: 640, h: 240 },
         emitter: 'OPEN_CATALOG',
-        path: 'elements.repeater',
+        path: 'nodes.repeater',
       },
       {
         id: 'header-hotspot-mobile',
         frame: 'mobile',
         rect: { x: 0, y: 0, w: 320, h: 44 },
         emitter: 'OPEN_HEADER_PANEL',
-        path: 'elements.header',
+        path: 'nodes.header',
       },
     ],
     nodes: {
@@ -73,7 +73,7 @@ export const sampleCompiledArtifact: CompiledArtifact = {
         type: 'text',
         props: {
           tag: 'h1',
-          text: 'Compiled Artifact Preview',
+          text: 'Draft Artifact Preview',
           styler: {
             fontSize: '1.75rem',
             fontWeight: 600,
@@ -92,7 +92,7 @@ export const sampleCompiledArtifact: CompiledArtifact = {
         type: 'text',
         props: {
           tag: 'h2',
-          text: 'Compiled-only runtime rendering',
+          text: 'Draft-first runtime rendering',
         },
       },
       'hero-body': {
@@ -100,7 +100,7 @@ export const sampleCompiledArtifact: CompiledArtifact = {
         props: {
           tag: 'p',
           text:
-            'Frames, grid placement, and styler mappings are derived strictly from the compiled artifact.',
+            'Frames, grid placement, and styler mappings are derived from the canonical draft schema.',
           styler: {
             opacity: 0.86,
             lineHeight: 1.4,
@@ -170,6 +170,23 @@ export const sampleCompiledArtifact: CompiledArtifact = {
             columns: 'repeat(2, minmax(0, 1fr))',
             rows: 'auto auto 1fr',
             areas: ['"header header"', '"hero hero"', '"list list"'],
+          },
+          order: ['header', 'hero', 'repeater'],
+          placements: {
+            header: { area: 'header' },
+            hero: { area: 'hero' },
+            repeater: { area: 'list' },
+          },
+        },
+        tablet: {
+          grid: {
+            columns: 'repeat(4, minmax(0, 1fr))',
+            rows: 'auto auto 1fr',
+            areas: [
+              '"header header header header"',
+              '"hero hero hero hero"',
+              '"list list list list"',
+            ],
           },
           order: ['header', 'hero', 'repeater'],
           placements: {

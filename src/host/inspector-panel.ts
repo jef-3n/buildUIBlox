@@ -2,7 +2,7 @@ import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { CompiledArtifact, CompiledNode } from './compiled-canvas';
 import type { DraftArtifact } from './draft-contract';
-import { getElementIdFromPath } from './paths';
+import { getNodeIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
 import type { FrameName } from './frame-types';
 import './selection-metadata';
@@ -167,7 +167,7 @@ export class InspectorPanel extends LitElement {
   }
 
   private renderStylerField(nodeId: string, field: InspectorField) {
-    const path = `elements.${nodeId}.props.styler.${field.key}`;
+    const path = `nodes.${nodeId}.props.styler.${field.key}`;
     const value = getPathValue(this.draft, path);
     return html`
       <label>
@@ -183,7 +183,7 @@ export class InspectorPanel extends LitElement {
   }
 
   private renderBindingField(nodeId: string, field: InspectorField) {
-    const path = `elements.${nodeId}.props.bindings.${field.key}`;
+    const path = `nodes.${nodeId}.props.bindings.${field.key}`;
     const value = getPathValue(this.draft, path);
     return html`
       <label>
@@ -244,7 +244,7 @@ export class InspectorPanel extends LitElement {
     if (!this.selectedPath || !this.artifact) {
       return null;
     }
-    const id = getElementIdFromPath(this.selectedPath);
+    const id = getNodeIdFromPath(this.selectedPath);
     const node = this.artifact.runtime.nodes[id];
     if (!node) {
       return null;

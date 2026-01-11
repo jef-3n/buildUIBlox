@@ -26,7 +26,7 @@ export class DraftArtifactStore {
   private listeners = new Set<DraftStoreListener>();
 
   constructor(appId: string, initialSnapshot: DraftArtifact) {
-    this.storageKey = ARTIFACT_PATHS.draft(appId, initialSnapshot.draftId);
+    this.storageKey = ARTIFACT_PATHS.draft(appId, initialSnapshot.metadata.draftId);
     this.storage = resolveStorage();
     this.snapshot = initialSnapshot;
   }
@@ -64,13 +64,13 @@ export class DraftArtifactStore {
 
   write(snapshot: DraftArtifact, origin: DraftStoreOrigin = 'local') {
     this.snapshot = snapshot;
-    this.setStorageKey(snapshot.draftId);
+    this.setStorageKey(snapshot.metadata.draftId);
     this.persistSnapshot(snapshot);
     this.notify(snapshot, origin);
   }
 
   private setStorageKey(draftId: string) {
-    const nextKey = ARTIFACT_PATHS.draft(this.snapshot.appId, draftId);
+    const nextKey = ARTIFACT_PATHS.draft(this.snapshot.metadata.appId, draftId);
     if (nextKey === this.storageKey) {
       return;
     }
