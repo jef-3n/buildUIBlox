@@ -14,6 +14,7 @@ import {
 
 export const HOST_EVENT_ENVELOPE_VERSION = 'host-event.v1' as const;
 export const HOST_EVENT_ENVELOPE_EVENT = 'HOST_EVENT_ENVELOPE';
+export const STYLER_UPDATE_PROP = 'styler.updateProp' as const;
 
 export const COMPATIBLE_HOST_EVENT_ENVELOPE_VERSIONS = new Set<string>([
   HOST_EVENT_ENVELOPE_VERSION,
@@ -23,7 +24,7 @@ export type HostEventType =
   | 'ui.setFrame'
   | 'ui.surface'
   | 'selection.set'
-  | 'artifact.pathEdit'
+  | typeof STYLER_UPDATE_PROP
   | 'session.sync'
   | 'session.state'
   | 'pipeline.state'
@@ -39,7 +40,7 @@ export type HostEventPayloadMap = {
     hotspotId?: string;
     source?: string;
   };
-  'artifact.pathEdit': { path: string; value: unknown; frame?: FrameName };
+  [STYLER_UPDATE_PROP]: { path: string; value: unknown; frame?: FrameName };
   'session.sync': { session: GlobalSessionSnapshot };
   'session.state': { session: GlobalSessionSnapshot; origin: 'local' | 'remote' };
   'pipeline.state': { pipeline: GlobalSessionPipelineState | null };
@@ -95,7 +96,7 @@ const hasHostEventPayload = (
         hasString(payload.path) &&
         (typeof payload.frame === 'undefined' || isFrameName(payload.frame))
       );
-    case 'artifact.pathEdit':
+    case STYLER_UPDATE_PROP:
       return (
         hasString(payload.path) &&
         (typeof payload.frame === 'undefined' || isFrameName(payload.frame))

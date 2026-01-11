@@ -2,7 +2,12 @@ import type { FrameName } from './frame-types';
 import type { CompiledArtifact } from './compiled-canvas';
 import type { ObservationCategory, ObservationPacket } from './telemetry';
 import type { ActiveSelection } from '../contracts/active-selection';
-import type { HostEventEnvelope, HostEventType } from '../contracts/event-envelope';
+import {
+  STYLER_UPDATE_PROP,
+  type HostEventEnvelope,
+  type HostEventType,
+} from '../contracts/event-envelope';
+import type { DraftArtifact } from './draft-contract';
 import type { UiState } from '../contracts/ui-state';
 
 export type HostState = {
@@ -10,6 +15,7 @@ export type HostState = {
   selection: ActiveSelection;
   selectionsByFrame: Record<FrameName, string | undefined>;
   artifact: CompiledArtifact;
+  draft: DraftArtifact;
 };
 
 export const resolveObservationCategory = (
@@ -19,8 +25,8 @@ export const resolveObservationCategory = (
   switch (eventType) {
     case 'selection.set':
       return 'selection';
-    case 'artifact.pathEdit':
-      return 'artifact';
+    case STYLER_UPDATE_PROP:
+      return 'draft';
     case 'pipeline.state':
     case 'session.state':
     case 'ui.surface':
@@ -47,12 +53,12 @@ export const buildObservationPayload = (
         frame: nextState.ui.activeFrame,
         activeSurface: nextState.ui.activeSurface,
       };
-    case 'artifact.pathEdit':
+    case STYLER_UPDATE_PROP:
       return {
         path: event.payload.path,
         frame: event.payload.frame ?? nextState.ui.activeFrame,
         compiledId: nextState.artifact.compiledId,
-        draftId: nextState.artifact.draftId,
+        draftId: nextState.draft.draftId,
         activeSurface: nextState.ui.activeSurface,
       };
     case 'session.sync':

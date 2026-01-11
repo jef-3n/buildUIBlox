@@ -4,13 +4,15 @@ import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
 import './selection-metadata';
 import { sampleCompiledArtifact } from './sample-compiled';
+import { sampleDraft } from './sample-draft';
 import type { FrameName } from './frame-types';
 import { elementPathPattern, getElementIdFromPath } from './paths';
-import { normalizeFrameScopedPath, setPathValue } from './path-edits';
+import { normalizeDraftStylerPath, setDraftPathValue } from './path-edits';
 import type { ObservationPacket } from './telemetry';
 import './telemetry-sniffer';
 import {
   HOST_EVENT_ENVELOPE_EVENT,
+  STYLER_UPDATE_PROP,
   createHostEventEnvelope,
   isCompatibleHostEventEnvelope,
   type HostEventEnvelope,
@@ -66,6 +68,7 @@ export class NuwaHost extends LitElement {
     selection: { path: undefined },
     selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
     artifact: sampleCompiledArtifact,
+    draft: sampleDraft,
   };
 
   @state()
@@ -217,6 +220,7 @@ export class NuwaHost extends LitElement {
         <slot>
           <compiled-canvas
             .artifact=${this.hostState.artifact}
+            .draft=${this.hostState.draft}
             .activeFrame=${activeFrame}
             .selectedPath=${this.hostState.selection.path}
           ></compiled-canvas>
@@ -230,7 +234,7 @@ export class NuwaHost extends LitElement {
               .activeFrame=${activeFrame}
               .selectionPath=${this.hostState.selection.path ?? ''}
               .compiledId=${this.hostState.artifact.compiledId}
-              .draftId=${this.hostState.artifact.draftId}
+              .draftId=${this.hostState.draft.draftId}
             ></telemetry-sniffer>
           `
         )}
@@ -519,7 +523,7 @@ const hostEventHandlers: HostEventHandlerMap = {
   // Active surface rules:
   // - ui.setFrame -> frames
   // - selection.set -> canvas
-  // - artifact.pathEdit -> metadata
+  // - styler.updateProp -> metadata
   // - session.sync -> use session-provided activeSurface
   'ui.setFrame': (state, event) => {
     if (state.ui.activeFrame === event.payload.frame) {
@@ -562,20 +566,20 @@ const hostEventHandlers: HostEventHandlerMap = {
       },
     };
   },
-  'artifact.pathEdit': (state, event) => {
+  [STYLER_UPDATE_PROP]: (state, event) => {
     const targetFrame = event.payload.frame ?? state.ui.activeFrame;
-    const normalizedPath = normalizeFrameScopedPath(event.payload.path, targetFrame);
+    const normalizedPath = normalizeDraftStylerPath(event.payload.path, targetFrame);
     if (!normalizedPath) {
       return state;
     }
-    const nextArtifact = setPathValue(state.artifact, normalizedPath, event.payload.value);
-    if (!nextArtifact) {
+    const nextDraft = setDraftPathValue(state.draft, normalizedPath, event.payload.value);
+    if (!nextDraft) {
       return state;
     }
     return {
       ...state,
       ui: { ...state.ui, activeSurface: 'metadata' },
-      artifact: nextArtifact,
+      draft: nextDraft,
     };
   },
   'session.sync': (state, event) => {
