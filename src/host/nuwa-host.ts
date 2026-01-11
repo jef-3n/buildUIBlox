@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
+import './selection-metadata';
 import { sampleCompiledArtifact } from './sample-compiled';
 import type { FrameName } from './frame-types';
 import { elementPathPattern, getElementIdFromPath } from './paths';
