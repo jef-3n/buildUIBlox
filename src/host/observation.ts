@@ -13,6 +13,7 @@ import {
   WAREHOUSE_ADD_INTENT,
   WAREHOUSE_MOVE_INTENT,
 } from '../contracts/event-envelope';
+import type { GlobalSessionDraftLock } from '../contracts/global-session';
 import type { DraftArtifact } from './draft-contract';
 import type { UiState } from '../contracts/ui-state';
 
@@ -22,6 +23,7 @@ export type HostState = {
   selectionsByFrame: Record<FrameName, string | undefined>;
   artifact: CompiledArtifact;
   draft: DraftArtifact;
+  draftLock: GlobalSessionDraftLock;
 };
 
 export const resolveObservationCategory = (
