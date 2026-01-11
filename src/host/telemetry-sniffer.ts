@@ -1,0 +1,166 @@
+import { LitElement, html, css } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
+import type { ObservationCategory, ObservationPacket } from './telemetry';
+
+@customElement('telemetry-sniffer')
+export class TelemetrySniffer extends LitElement {
+  @property({ type: String })
+  activeFrame = '';
+
+  @property({ type: String })
+  selectionPath = '';
+
+  @property({ type: String })
+  compiledId = '';
+
+  @property({ type: String })
+  draftId = '';
+
+  @state()
+  private packets: ObservationPacket[] = [];
+
+  private handleObservation = (event: Event) => {
+    const detail = (event as CustomEvent<ObservationPacket>).detail;
+    if (!detail) {
+      return;
+    }
+    const next = [detail, ...this.packets].slice(0, 12);
+    this.packets = next;
+  };
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.ownerDocument.addEventListener('OBSERVATION_PACKET', this.handleObservation);
+  }
+
+  disconnectedCallback() {
+    this.ownerDocument.removeEventListener('OBSERVATION_PACKET', this.handleObservation);
+    super.disconnectedCallback();
+  }
+
+  static styles = css`
+    :host {
+      display: block;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.85rem;
+      color: #0f172a;
+      width: 260px;
+      padding: 12px;
+      border-left: 1px solid #e2e8f0;
+      background: #f8fafc;
+      height: 100%;
+      box-sizing: border-box;
+    }
+
+    .section {
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+
+    .section h3 {
+      margin: 0 0 8px;
+      font-size: 0.9rem;
+      color: #1e293b;
+    }
+
+    .label {
+      display: inline-block;
+      min-width: 92px;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    .value {
+      color: #0f172a;
+      word-break: break-word;
+    }
+
+    .packet-list {
+      display: grid;
+      gap: 8px;
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    .packet {
+      padding: 8px;
+      border-radius: 6px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      font-family: 'SFMono-Regular', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+      color: #1e293b;
+    }
+
+    .timestamp {
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+
+    .empty {
+      color: #94a3b8;
+      font-style: italic;
+    }
+  `;
+
+  render() {
+    const latestPipeline = this.getLatestPacket(['pipeline', 'artifact']);
+    const latestSelection = this.getLatestPacket(['selection']);
+
+    return html`
+      <section class="section">
+        <h3>Pipeline telemetry</h3>
+        <div><span class="label">Frame</span><span class="value">${this.activeFrame}</span></div>
+        <div><span class="label">Compiled</span><span class="value">${this.compiledId}</span></div>
+        <div><span class="label">Draft</span><span class="value">${this.draftId}</span></div>
+        <div>
+          <span class="label">Last event</span>
+          <span class="value">${latestPipeline?.event ?? '—'}</span>
+        </div>
+        <div class="timestamp">
+          ${latestPipeline ? `Last update ${latestPipeline.emittedAt}` : 'No pipeline events yet.'}
+        </div>
+      </section>
+      <section class="section">
+        <h3>Selection telemetry</h3>
+        <div>
+          <span class="label">Path</span>
+          <span class="value">${this.selectionPath || '—'}</span>
+        </div>
+        <div>
+          <span class="label">Last event</span>
+          <span class="value">${latestSelection?.event ?? '—'}</span>
+        </div>
+        <div class="timestamp">
+          ${latestSelection ? `Last update ${latestSelection.emittedAt}` : 'No selection events yet.'}
+        </div>
+      </section>
+      <section class="section">
+        <h3>Observation stream</h3>
+        ${this.packets.length
+          ? html`
+              <div class="packet-list">
+                ${this.packets.map(
+                  (packet) => html`
+                    <div class="packet">
+                      <div>${packet.sequence}. ${packet.event}</div>
+                      <div>${packet.category} · ${packet.id}</div>
+                      <div class="timestamp">${packet.emittedAt}</div>
+                    </div>
+                  `
+                )}
+              </div>
+            `
+          : html`<div class="empty">Waiting for event packets...</div>`}
+      </section>
+    `;
+  }
+
+  private getLatestPacket(categories: ObservationCategory[]) {
+    return this.packets.find((packet) => categories.includes(packet.category));
+  }
+}

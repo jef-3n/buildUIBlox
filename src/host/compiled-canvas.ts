@@ -5,10 +5,10 @@ import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import '../ghost/ghost-layer';
-import type { GhostHotspot } from '../ghost/ghost-layer';
+import type { GhostHotspot, GhostSelectDetail, GhostTriggerDetail } from '../ghost/ghost-layer';
 import { getElementIdFromPath } from './paths';
-
-export type FrameName = 'desktop' | 'tablet' | 'mobile';
+import { getPathValue } from './path-edits';
+import type { FrameName } from './frame-types';
 
 type StyleValue = string | number;
 
@@ -57,21 +57,17 @@ export type CompiledArtifact = {
   integrity: { sourceHash: string; compilerVersion: string };
 };
 
+type GhostSelectionEventDetail = GhostSelectDetail & { source: 'ghost' };
+type GhostTriggerEventEnvelope = GhostTriggerDetail & { source: 'ghost' };
+
 const isCompiledArtifact = (artifact?: CompiledArtifact): artifact is CompiledArtifact => {
   return Boolean(artifact && artifact.schemaVersion === 'compiled.v1' && artifact.runtime);
 };
 
-const getPathValue = (data: unknown, path?: string) => {
-  if (!data || !path) return undefined;
-  return path.split('.').reduce<unknown>((acc, key) => {
-    if (acc && typeof acc === 'object' && key in acc) {
-      return (acc as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }, data);
-};
-
-const resolveStyler = (styler: CompiledNode['props'] extends { styler?: infer S } ? S : undefined, frame: FrameName) => {
+const resolveStyler = (
+  styler: CompiledNode['props'] extends { styler?: infer S } ? S : undefined,
+  frame: FrameName
+) => {
   if (!styler) return {};
   const { frames, ...base } = styler as Record<string, StyleValue | Record<string, Record<string, StyleValue>>> & {
     frames?: Record<string, Record<string, StyleValue>>;
@@ -146,9 +142,10 @@ export class CompiledCanvas extends LitElement {
       return html`<div class="empty-state">Compiled artifact required for runtime rendering.</div>`;
     }
 
-    const frame =
-      this.artifact.runtime.layout.frames[this.activeFrame] ??
-      this.artifact.runtime.layout.frames.desktop;
+    const resolvedFrameName = this.artifact.runtime.layout.frames[this.activeFrame]
+      ? this.activeFrame
+      : 'desktop';
+    const frame = this.artifact.runtime.layout.frames[resolvedFrameName];
 
     if (!frame) {
       return html`<div class="empty-state">No frame definition found for ${this.activeFrame}.</div>`;
@@ -160,7 +157,9 @@ export class CompiledCanvas extends LitElement {
       gridTemplateAreas: frame.grid.areas.join(' '),
     };
 
-    const ghostMap = this.artifact.runtime.ghostMap ?? [];
+    const ghostMap = (this.artifact.runtime.ghostMap ?? []).filter(
+      (hotspot) => !hotspot.frame || hotspot.frame === resolvedFrameName
+    );
 
     return html`
       <style>${this.artifact.css}</style>
@@ -169,35 +168,39 @@ export class CompiledCanvas extends LitElement {
           ${repeat(
             frame.order,
             (nodeId) => nodeId,
-            (nodeId) => this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {})
+            (nodeId) =>
+              this.renderNode(nodeId, frame, this.artifact.runtime.data ?? {}, resolvedFrameName)
           )}
         </section>
         <ghost-layer
           .ghostMap=${ghostMap}
           .interactionAuthority=${this.ghostAuthority}
           @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
+          @GHOST_HOTSPOT_TRIGGER=${this.handleGhostTrigger}
         ></ghost-layer>
       </div>
     `;
   }
 
-  private renderNode(nodeId: string, frame: CompiledFrame, dataContext: Record<string, unknown>) {
+  private renderNode(
+    nodeId: string,
+    frame: CompiledFrame,
+    dataContext: Record<string, unknown>,
+    frameName: FrameName
+  ) {
     const node = this.artifact?.runtime.nodes[nodeId];
     if (!node || node.type === 'template') {
       return nothing;
     }
 
     if (node.type === 'repeater') {
-      return this.renderRepeater(nodeId, node, frame, dataContext);
+      return this.renderRepeater(nodeId, node, frame, dataContext, frameName);
     }
 
-    const tag =
-      node.props?.tag ??
-      (node.type === 'text' ? 'span' : node.type === 'section' ? 'section' : 'div');
     const placement = frame.placements[nodeId];
     const style = {
       gridArea: placement?.area,
-      ...resolveStyler(node.props?.styler, this.activeFrame),
+      ...resolveStyler(node.props?.styler, frameName),
     };
 
     const classes = classMap(
@@ -205,30 +208,45 @@ export class CompiledCanvas extends LitElement {
         ? { [node.props.className]: true, selected: this.isSelected(nodeId) }
         : { selected: this.isSelected(nodeId) }
     );
+    if (node.type === 'image') {
+      return html`
+        <img
+          class=${classes}
+          style=${styleMap(style)}
+          src=${node.props?.src ?? ''}
+          alt=${node.props?.alt ?? ''}
+        />
+      `;
+    }
+
+    const tag =
+      node.props?.tag ??
+      (node.type === 'text' ? 'span' : node.type === 'section' ? 'section' : 'div');
     const tagName = unsafeStatic(tag);
 
     return staticHtml`
       <${tagName} class=${classes} style=${styleMap(style)}>
-        ${this.renderContent(node, frame, dataContext)}
+        ${this.renderContent(node, frame, dataContext, frameName)}
       </${tagName}>
     `;
   }
 
-  private renderContent(node: CompiledNode, frame: CompiledFrame, dataContext: Record<string, unknown>) {
+  private renderContent(
+    node: CompiledNode,
+    frame: CompiledFrame,
+    dataContext: Record<string, unknown>,
+    frameName: FrameName
+  ) {
     if (node.type === 'text') {
       const boundText = getPathValue(dataContext, node.props?.textPath);
       return boundText ?? node.props?.text ?? '';
-    }
-
-    if (node.type === 'image') {
-      return html`<img src=${node.props?.src ?? ''} alt=${node.props?.alt ?? ''} />`;
     }
 
     if (!node.children?.length) {
       return nothing;
     }
 
-    return node.children.map((childId) => this.renderNode(childId, frame, dataContext));
+    return node.children.map((childId) => this.renderNode(childId, frame, dataContext, frameName));
   }
 
   /**
@@ -242,7 +260,8 @@ export class CompiledCanvas extends LitElement {
     nodeId: string,
     node: CompiledNode,
     frame: CompiledFrame,
-    dataContext: Record<string, unknown>
+    dataContext: Record<string, unknown>,
+    frameName: FrameName
   ) {
     const items =
       (Array.isArray(node.props?.items) && node.props?.items) ||
@@ -259,7 +278,7 @@ export class CompiledCanvas extends LitElement {
     const placement = frame.placements[nodeId];
     const style = {
       gridArea: placement?.area,
-      ...resolveStyler(node.props?.styler, this.activeFrame),
+      ...resolveStyler(node.props?.styler, frameName),
     };
 
     const classes = classMap(
@@ -279,13 +298,16 @@ export class CompiledCanvas extends LitElement {
                 ? { 'repeater-item': true, [templateNode.props.className]: true }
                 : { 'repeater-item': true }
             );
+            const itemStyle = resolveStyler(templateNode.props?.styler, this.activeFrame);
+            const templateTag = templateNode.props?.tag ?? 'div';
+            const templateTagName = unsafeStatic(templateTag);
 
-            return html`
-              <div class=${itemClasses}>
+            return staticHtml`
+              <${templateTagName} class=${itemClasses} style=${styleMap(itemStyle)}>
                 ${templateNode.children?.map((childId) =>
-                  this.renderNode(childId, frame, item as Record<string, unknown>)
+                  this.renderNode(childId, frame, item as Record<string, unknown>, frameName)
                 )}
-              </div>
+              </${templateTagName}>
             `;
           }
         )}
@@ -298,17 +320,35 @@ export class CompiledCanvas extends LitElement {
     return getElementIdFromPath(this.selectedPath) === nodeId;
   }
 
-  private handleGhostSelection(event: CustomEvent<{ path: string }>) {
+  private handleGhostSelection(event: CustomEvent<GhostSelectDetail>) {
     event.stopPropagation();
-    const path = event.detail.path;
+    if (!this.ghostAuthority) {
+      return;
+    }
+    const { path, rect, hotspotId } = event.detail;
     if (path) {
       this.dispatchEvent(
-        new CustomEvent('SELECTION_SET', {
-          detail: { path },
+        new CustomEvent<GhostSelectionEventDetail>('SELECTION_SET', {
+          detail: { path, rect, hotspotId, source: 'ghost' },
           bubbles: true,
           composed: true,
         })
       );
     }
+  }
+
+  private handleGhostTrigger(event: CustomEvent<GhostTriggerDetail>) {
+    event.stopPropagation();
+    if (!this.ghostAuthority) {
+      return;
+    }
+    const { type, payload, path, rect, hotspotId } = event.detail;
+    this.dispatchEvent(
+      new CustomEvent<GhostTriggerEventEnvelope>('GHOST_HOTSPOT_TRIGGER', {
+        detail: { type, payload, path, rect, hotspotId, source: 'ghost' },
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 }
