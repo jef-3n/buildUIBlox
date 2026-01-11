@@ -29,4 +29,54 @@ describe('builder UI registry bootstrap fallback', () => {
     assert.equal(result.snapshot?.registry.key, 'local');
     assert.equal(result.snapshot?.activeRegistry, 'local');
   });
+
+  it('prefers the pinned bootstrap snapshot in self-hosted mode', () => {
+    const manifest = createBuilderUiManifest({
+      bootstrap: {
+        isSelfHosting: true,
+        versionPin: 'v2',
+        snapshots: [
+          {
+            version: 'v1',
+            path: '/snapshots/v1/manifest.json',
+            boundary: '/system/components/builder-ui/',
+            activeRegistry: 'local',
+            registry: localRegistry,
+            bootstrap: {
+              isSelfHosting: true,
+              activeRegistry: 'local',
+              fallbackRegistry: 'local',
+              versionPin: 'v2',
+              publishHistory: [],
+              rollbackHistory: [],
+            },
+          },
+          {
+            version: 'v2',
+            path: '/snapshots/v2/manifest.json',
+            boundary: '/system/components/builder-ui/',
+            activeRegistry: 'local',
+            registry: localRegistry,
+            bootstrap: {
+              isSelfHosting: true,
+              activeRegistry: 'local',
+              fallbackRegistry: 'local',
+              versionPin: 'v2',
+              publishHistory: [],
+              rollbackHistory: [],
+            },
+          },
+        ],
+      },
+      registries: {
+        local: localRegistry,
+      },
+    });
+
+    const result = resolveBuilderUiRegistrySnapshot(manifest);
+
+    assert.ok(result.snapshot);
+    assert.equal(result.snapshot?.version, 'v2');
+    assert.equal(result.snapshot?.activeRegistry, 'local');
+  });
 });

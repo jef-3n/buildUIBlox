@@ -9,60 +9,20 @@ import type { GhostHotspot, GhostSelectDetail, GhostTriggerDetail } from '../gho
 import { getElementIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
 import type { FrameName } from './frame-types';
+import {
+  type CompiledArtifact,
+  type CompiledFrame,
+  type CompiledNode,
+  isCompatibleCompiledArtifact,
+} from './compiled-contract';
 
-type StyleValue = string | number;
-
-export type CompiledNode = {
-  type: string;
-  props?: {
-    text?: string;
-    textPath?: string;
-    tag?: string;
-    src?: string;
-    alt?: string;
-    className?: string;
-    styler?: Record<string, StyleValue | Record<string, Record<string, StyleValue>>>;
-    items?: unknown[];
-    dataPath?: string;
-    templateId?: string;
-  };
-  children?: string[];
-};
-
-export type CompiledFrame = {
-  grid: {
-    columns: string;
-    rows: string;
-    areas: string[];
-  };
-  order: string[];
-  placements: Record<string, { area?: string }>;
-};
-
-export type CompiledArtifact = {
-  schemaVersion: 'compiled.v1';
-  compiledId: string;
-  draftId: string;
-  appId: string;
-  compiledAt: string;
-  css: string;
-  runtime: {
-    nodes: Record<string, CompiledNode>;
-    layout: {
-      frames: Partial<Record<FrameName, CompiledFrame>>;
-    };
-    data?: Record<string, unknown>;
-    ghostMap?: GhostHotspot[];
-  };
-  integrity: { sourceHash: string; compilerVersion: string };
-};
+export type { CompiledArtifact, CompiledFrame, CompiledNode } from './compiled-contract';
+export { COMPILED_SCHEMA_VERSION, isCompatibleCompiledArtifact } from './compiled-contract';
 
 type GhostSelectionEventDetail = GhostSelectDetail & { source: 'ghost' };
 type GhostTriggerEventEnvelope = GhostTriggerDetail & { source: 'ghost' };
 
-const isCompiledArtifact = (artifact?: CompiledArtifact): artifact is CompiledArtifact => {
-  return Boolean(artifact && artifact.schemaVersion === 'compiled.v1' && artifact.runtime);
-};
+type StyleValue = string | number;
 
 const resolveStyler = (
   styler: CompiledNode['props'] extends { styler?: infer S } ? S : undefined,
@@ -138,7 +98,7 @@ export class CompiledCanvas extends LitElement {
   selectedPath?: string;
 
   render() {
-    if (!isCompiledArtifact(this.artifact)) {
+    if (!isCompatibleCompiledArtifact(this.artifact)) {
       return html`<div class="empty-state">Compiled artifact required for runtime rendering.</div>`;
     }
 

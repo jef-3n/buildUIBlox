@@ -1,15 +1,17 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { getElementIdFromPath } from './paths';
-import type { CompiledArtifact, CompiledFrame, CompiledNode, FrameName } from './compiled-canvas';
+import {
+  isCompatibleCompiledArtifact,
+  type CompiledArtifact,
+  type CompiledFrame,
+  type CompiledNode,
+} from './compiled-canvas';
+import type { FrameName } from './frame-types';
 
 type MetadataItem = {
   label: string;
   value?: string;
-};
-
-const isCompiledArtifact = (artifact?: CompiledArtifact): artifact is CompiledArtifact => {
-  return Boolean(artifact && artifact.schemaVersion === 'compiled.v1' && artifact.runtime);
 };
 
 const formatValue = (value?: string) => value ?? '—';
@@ -102,7 +104,7 @@ export class SelectionMetadata extends LitElement {
   `;
 
   render() {
-    if (!isCompiledArtifact(this.artifact)) {
+    if (!isCompatibleCompiledArtifact(this.artifact)) {
       return html`<div class="panel"><div class="empty">No compiled artifact loaded.</div></div>`;
     }
 

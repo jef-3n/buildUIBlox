@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createObservationPacket } from '../../dist-tests/host/observation.js';
+import { COMPILED_SCHEMA_VERSION } from '../../dist-tests/host/compiled-canvas.js';
 
 describe('nuwa-host observation protocol', () => {
   it('emits pipeline packets with deterministic payload fields', () => {
@@ -9,7 +10,7 @@ describe('nuwa-host observation protocol', () => {
       selection: { path: undefined },
       selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
       artifact: {
-        schemaVersion: 'compiled.v1',
+        schemaVersion: COMPILED_SCHEMA_VERSION,
         compiledId: 'compiled-1',
         draftId: 'draft-1',
         appId: 'app-1',

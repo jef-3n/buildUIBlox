@@ -1,8 +1,10 @@
 import { build } from 'esbuild';
 
 const entryPoints = [
+  'src/host/compiled-contract.ts',
   'src/host/observation.ts',
   'src/host/path-edits.ts',
+  'src/host/slot-replacement.ts',
   'src/ghost/geometry.ts',
   'src/system/components/builder-ui/manifest.ts',
   'src/system/components/builder-ui/registry.ts',

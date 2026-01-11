@@ -1,4 +1,5 @@
 export const BUILDER_UI_REGISTRY_BOUNDARY = '/system/components/builder-ui/';
+export const BUILDER_UI_MANIFEST_VERSION = 'builder-ui-manifest/v1' as const;
 
 export type BuilderUiRegistryKey = 'local' | 'remote';
 
@@ -58,7 +59,7 @@ export type BuilderUiRegistrySnapshot = {
 };
 
 export type BuilderUiManifest = {
-  version: 'builder-ui-manifest/v1';
+  version: typeof BUILDER_UI_MANIFEST_VERSION;
   boundary: string;
   activeRegistry: BuilderUiRegistryKey;
   bootstrap: BuilderUiBootstrapState;
@@ -123,7 +124,7 @@ export const createBuilderUiManifest = (
   overrides: Partial<BuilderUiManifest> = {}
 ): BuilderUiManifest => {
   const manifest: BuilderUiManifest = {
-    version: 'builder-ui-manifest/v1',
+    version: BUILDER_UI_MANIFEST_VERSION,
     boundary: BUILDER_UI_REGISTRY_BOUNDARY,
     activeRegistry: 'local',
     bootstrap: {

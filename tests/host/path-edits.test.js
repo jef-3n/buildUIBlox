@@ -50,4 +50,24 @@ describe('path edits', () => {
     assert.equal(setPathValue(baseArtifact, 'runtime', {}), null);
     assert.equal(setPathValue(baseArtifact, 'runtime.layout.frames', {}), null);
   });
+
+  it('avoids mutating nested containers on updates', () => {
+    const artifact = {
+      runtime: {
+        data: {
+          title: 'Original',
+          tags: ['alpha', 'beta'],
+        },
+        layout: baseArtifact.runtime.layout,
+      },
+    };
+
+    const next = setPathValue(artifact, 'runtime.data.title', 'Updated');
+
+    assert.ok(next);
+    assert.equal(artifact.runtime.data.title, 'Original');
+    assert.deepEqual(artifact.runtime.data.tags, ['alpha', 'beta']);
+    assert.notStrictEqual(next.runtime, artifact.runtime);
+    assert.notStrictEqual(next.runtime.data, artifact.runtime.data);
+  });
 });

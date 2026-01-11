@@ -10,6 +10,11 @@ import { normalizeFrameScopedPath, setPathValue } from './path-edits';
 import type { ObservationPacket } from './telemetry';
 import './telemetry-sniffer';
 import {
+  getSlotReplacementInstruction,
+  type HostSlotName,
+  type HostSlotReplacementState,
+} from './slot-replacement';
+import {
   SHARED_SESSION_UPDATE_EVENT,
   type ActiveSurface,
   type SharedSessionEventDetail,
@@ -28,12 +33,8 @@ import {
 import { loadBuilderUiRegistry } from '../system/components/builder-ui/registry';
 
 
-type HostSlotName = 'top' | 'left' | 'right' | 'bottom';
-
-type HostSlotReplacementState = {
-  status: 'idle' | 'loading' | 'ready' | 'failed';
+type HostSlotReplacementStateWithEntry = HostSlotReplacementState & {
   entry?: BuilderUiComponentEntry;
-  tagName?: string;
   error?: string;
 };
 
@@ -62,7 +63,7 @@ export class NuwaHost extends LitElement {
   };
 
   @state()
-  private slotReplacementState: Record<HostSlotName, HostSlotReplacementState> = {
+  private slotReplacementState: Record<HostSlotName, HostSlotReplacementStateWithEntry> = {
     top: { status: 'idle' },
     left: { status: 'idle' },
     right: { status: 'idle' },
@@ -235,12 +236,13 @@ export class NuwaHost extends LitElement {
 
   private renderSlotReplacement(slotName: HostSlotName, fallback: unknown) {
     const slotState = this.slotReplacementState[slotName];
-    if (slotState?.status === 'ready' && slotState.tagName) {
-      const tagName = unsafeStatic(slotState.tagName);
+    const instruction = getSlotReplacementInstruction(slotName, slotState);
+    if (instruction.kind === 'component') {
+      const tagName = unsafeStatic(instruction.tagName);
       return staticHtml`<${tagName}></${tagName}>`;
     }
 
-    return html`<slot name=${slotName}>${fallback}</slot>`;
+    return html`<slot name=${instruction.name}>${fallback}</slot>`;
   }
 
   private renderFrameToggle(activeFrame: FrameName) {

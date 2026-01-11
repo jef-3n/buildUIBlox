@@ -1,7 +1,7 @@
-import type { CompiledArtifact } from './compiled-canvas';
+import { COMPILED_SCHEMA_VERSION, type CompiledArtifact } from './compiled-canvas';
 
 export const sampleCompiledArtifact: CompiledArtifact = {
-  schemaVersion: 'compiled.v1',
+  schemaVersion: COMPILED_SCHEMA_VERSION,
   compiledId: 'compiled-demo-001',
   draftId: 'draft-demo-001',
   appId: 'app-demo',
