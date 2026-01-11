@@ -20,6 +20,9 @@ export const BINDING_UPDATE_PROP = 'binding.updateProp' as const;
 export const UI_SET_SCALE = 'ui.setScale' as const;
 export const UI_DRAWER_OPEN = 'ui.drawer.open' as const;
 export const UI_DRAWER_CLOSE = 'ui.drawer.close' as const;
+export const UI_TOGGLE_DRAWER = 'ui.drawer.toggle' as const;
+export const UI_RESET_LAYOUT = 'ui.layout.reset' as const;
+export const UI_FOCUS_SURFACE = 'ui.surface.focus' as const;
 export const WAREHOUSE_ADD_INTENT = 'warehouse.addIntent' as const;
 export const WAREHOUSE_MOVE_INTENT = 'warehouse.moveIntent' as const;
 export const PIPELINE_TRIGGER_BUILD = 'PIPELINE_TRIGGER_BUILD' as const;
@@ -43,6 +46,9 @@ export type HostEventType =
   | typeof UI_SET_SCALE
   | typeof UI_DRAWER_OPEN
   | typeof UI_DRAWER_CLOSE
+  | typeof UI_TOGGLE_DRAWER
+  | typeof UI_RESET_LAYOUT
+  | typeof UI_FOCUS_SURFACE
   | typeof STYLER_UPDATE_PROP
   | typeof BINDING_UPDATE_PROP
   | 'session.sync'
@@ -75,6 +81,9 @@ export type HostEventPayloadMap = {
   [UI_SET_SCALE]: { scale: number };
   [UI_DRAWER_OPEN]: { drawer: 'top' | 'left' | 'right' | 'bottom'; size?: number };
   [UI_DRAWER_CLOSE]: { drawer: 'top' | 'left' | 'right' | 'bottom' };
+  [UI_TOGGLE_DRAWER]: { drawer: 'top' | 'left' | 'right' | 'bottom'; size?: number };
+  [UI_RESET_LAYOUT]: Record<string, never>;
+  [UI_FOCUS_SURFACE]: { surface: ActiveSurface };
   [STYLER_UPDATE_PROP]: { path: string; value: unknown; frame?: FrameName };
   [BINDING_UPDATE_PROP]: { path: string; value: unknown };
   'session.sync': { session: GlobalSessionSnapshot };
@@ -198,6 +207,16 @@ const hasHostEventPayload = (
       );
     case UI_DRAWER_CLOSE:
       return hasString(payload.drawer) && VALID_DRAWERS.includes(payload.drawer);
+    case UI_TOGGLE_DRAWER:
+      return (
+        hasString(payload.drawer) &&
+        VALID_DRAWERS.includes(payload.drawer) &&
+        (typeof payload.size === 'undefined' || hasNumber(payload.size))
+      );
+    case UI_RESET_LAYOUT:
+      return true;
+    case UI_FOCUS_SURFACE:
+      return isActiveSurface(payload.surface);
     case STYLER_UPDATE_PROP:
       return (
         hasString(payload.path) &&

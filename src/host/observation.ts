@@ -7,7 +7,10 @@ import {
   STYLER_UPDATE_PROP,
   UI_DRAWER_CLOSE,
   UI_DRAWER_OPEN,
+  UI_FOCUS_SURFACE,
+  UI_RESET_LAYOUT,
   UI_SET_SCALE,
+  UI_TOGGLE_DRAWER,
   type HostEventEnvelope,
   type HostEventType,
   WAREHOUSE_ADD_INTENT,
@@ -39,6 +42,9 @@ export const resolveObservationCategory = (
     case UI_SET_SCALE:
     case UI_DRAWER_OPEN:
     case UI_DRAWER_CLOSE:
+    case UI_TOGGLE_DRAWER:
+    case UI_RESET_LAYOUT:
+    case UI_FOCUS_SURFACE:
     case 'pipeline.state':
     case 'session.state':
     case 'ui.surface':
@@ -94,6 +100,21 @@ export const buildObservationPayload = (
     case UI_DRAWER_CLOSE:
       return {
         drawer: event.payload.drawer,
+      };
+    case UI_TOGGLE_DRAWER:
+      return {
+        drawer: event.payload.drawer,
+        size: event.payload.size ?? nextState.ui.drawers[event.payload.drawer].size,
+        open: nextState.ui.drawers[event.payload.drawer].open,
+      };
+    case UI_RESET_LAYOUT:
+      return {
+        scale: nextState.ui.scale,
+        drawers: nextState.ui.drawers,
+      };
+    case UI_FOCUS_SURFACE:
+      return {
+        surface: event.payload.surface,
       };
     case 'session.sync':
       return {
