@@ -1,11 +1,14 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
+import './selection-metadata';
 import { sampleCompiledArtifact } from './sample-compiled';
 import type { FrameName } from './frame-types';
 import { elementPathPattern, getElementIdFromPath } from './paths';
 import { normalizeFrameScopedPath, setPathValue } from './path-edits';
 import type { CompiledArtifact } from './compiled-canvas';
+import type { ObservationCategory, ObservationPacket } from './telemetry';
+import './telemetry-sniffer';
 
 type UiState = {
   activeFrame: FrameName;
@@ -32,6 +35,8 @@ type HostEvent =
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
+  private observationSequence = 0;
+
   @state()
   private hostState: HostState = {
     ui: { activeFrame: 'desktop' },
@@ -134,6 +139,16 @@ export class NuwaHost extends LitElement {
     }
   `;
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.addEventListener('UI_SET_FRAME', this.handleFrameSwitch as EventListener);
+  }
+
+  disconnectedCallback() {
+    this.removeEventListener('UI_SET_FRAME', this.handleFrameSwitch as EventListener);
+    super.disconnectedCallback();
+  }
+
   render() {
     const activeFrame = this.hostState.ui.activeFrame;
     return html`
@@ -156,7 +171,14 @@ export class NuwaHost extends LitElement {
         </slot>
       </main>
       <div class="drawer right">
-        <slot name="right">${this.renderSelectionMetadata(activeFrame)}</slot>
+        <slot name="right">
+          <telemetry-sniffer
+            .activeFrame=${activeFrame}
+            .selectionPath=${this.hostState.selection.path ?? ''}
+            .compiledId=${this.hostState.artifact.compiledId}
+            .draftId=${this.hostState.artifact.draftId}
+          ></telemetry-sniffer>
+        </slot>
       </div>
       <div class="drawer bottom">
         <slot name="bottom"><div class="stub">Bottom drawer</div></slot>
@@ -172,10 +194,14 @@ export class NuwaHost extends LitElement {
         ${frames.map(
           (frame) => html`
             <button
-              @click=${() => this.dispatch({
-                type: 'UI_SET_FRAME',
-                payload: { frame },
-              })}
+              @click=${() =>
+                this.dispatchEvent(
+                  new CustomEvent('UI_SET_FRAME', {
+                    detail: { frame },
+                    bubbles: true,
+                    composed: true,
+                  })
+                )}
               ?disabled=${activeFrame === frame}
             >
               ${frame}
@@ -228,6 +254,13 @@ export class NuwaHost extends LitElement {
         </div>
       </div>
     `;
+  private handleFrameSwitch(event: CustomEvent<{ frame: FrameName }>) {
+    event.stopPropagation();
+    const frame = event.detail?.frame;
+    if (!frame) {
+      return;
+    }
+    this.dispatch({ type: 'UI_SET_FRAME', payload: { frame } });
   }
 
   private handleSelectionSet(event: CustomEvent<{ path: string }>) {
@@ -251,11 +284,68 @@ export class NuwaHost extends LitElement {
   }
 
   private dispatch(event: HostEvent) {
+    const prevState = this.hostState;
     const nextState = hostReducer(this.hostState, event);
     if (nextState === this.hostState) {
       return;
     }
     this.hostState = nextState;
+    this.emitObservationPacket(event, nextState, prevState);
+  }
+
+  private emitObservationPacket(event: HostEvent, nextState: HostState, prevState: HostState) {
+    const category = this.resolveObservationCategory(event);
+    const packet: ObservationPacket = {
+      id: `${Date.now()}-${this.observationSequence + 1}`,
+      sequence: ++this.observationSequence,
+      emittedAt: new Date().toISOString(),
+      source: 'nuwa-host',
+      category,
+      event: event.type,
+      payload: this.buildObservationPayload(event, nextState, prevState),
+    };
+    this.dispatchEvent(
+      new CustomEvent<ObservationPacket>('OBSERVATION_PACKET', {
+        detail: packet,
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  private resolveObservationCategory(event: HostEvent): ObservationCategory {
+    switch (event.type) {
+      case 'SELECTION_SET':
+        return 'selection';
+      case 'ARTIFACT_PATH_EDIT':
+        return 'artifact';
+      default:
+        return 'pipeline';
+    }
+  }
+
+  private buildObservationPayload(event: HostEvent, nextState: HostState, prevState: HostState) {
+    switch (event.type) {
+      case 'UI_SET_FRAME':
+        return {
+          frame: nextState.ui.activeFrame,
+          previousFrame: prevState.ui.activeFrame,
+        };
+      case 'SELECTION_SET':
+        return {
+          path: nextState.selection.path,
+          frame: nextState.ui.activeFrame,
+        };
+      case 'ARTIFACT_PATH_EDIT':
+        return {
+          path: event.payload.path,
+          frame: event.payload.frame ?? nextState.ui.activeFrame,
+          compiledId: nextState.artifact.compiledId,
+          draftId: nextState.artifact.draftId,
+        };
+      default:
+        return {};
+    }
   }
 }
 
@@ -266,6 +356,13 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
         return state;
       }
       const nextFrame = event.payload.frame;
+      const selectionCandidates = [
+        state.selectionsByFrame[nextFrame],
+        state.selection.path,
+      ];
+      const nextSelection = selectionCandidates.find((selectionPath) =>
+        isSelectionInFrame(state.artifact, nextFrame, selectionPath)
+      );
       return {
         ...state,
         ui: { activeFrame: nextFrame },
@@ -273,6 +370,9 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
       };
     }
     case 'SELECTION_SET': {
+      if (!isSelectionInFrame(state.artifact, state.ui.activeFrame, event.payload.path)) {
+        return state;
+      }
       return {
         ...state,
         selection: { path: event.payload.path },
@@ -300,4 +400,16 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
     default:
       return state;
   }
+};
+
+const isSelectionInFrame = (
+  artifact: CompiledArtifact,
+  frameName: FrameName,
+  selectionPath?: string
+) => {
+  if (!selectionPath) return false;
+  const nodeId = getElementIdFromPath(selectionPath);
+  const frame = artifact.runtime.layout.frames[frameName];
+  if (!frame) return false;
+  return frame.order.includes(nodeId) || nodeId in frame.placements;
 };

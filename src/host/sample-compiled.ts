@@ -41,21 +41,31 @@ export const sampleCompiledArtifact: CompiledArtifact = {
     ghostMap: [
       {
         id: 'header-hotspot',
+        frame: 'desktop',
         rect: { x: 0, y: 0, w: 360, h: 48 },
         emitter: 'OPEN_HEADER_PANEL',
         path: 'elements.header',
       },
       {
         id: 'hero-hotspot',
+        frame: 'desktop',
         rect: { x: 0, y: 72, w: 640, h: 140 },
         emitter: { type: 'OPEN_HERO_DETAILS', payload: { section: 'hero' } },
         path: 'elements.hero',
       },
       {
         id: 'list-hotspot',
+        frame: 'desktop',
         rect: { x: 0, y: 240, w: 640, h: 240 },
         emitter: 'OPEN_CATALOG',
         path: 'elements.repeater',
+      },
+      {
+        id: 'header-hotspot-mobile',
+        frame: 'mobile',
+        rect: { x: 0, y: 0, w: 320, h: 44 },
+        emitter: 'OPEN_HEADER_PANEL',
+        path: 'elements.header',
       },
     ],
     nodes: {
