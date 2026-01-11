@@ -104,12 +104,16 @@ export const compileDraftArtifact = (
 ): CompiledArtifact => {
   const compiledId = options.compiledId ?? createCompiledId(draft.metadata.draftId);
   const baseArtifact = options.baseArtifact;
-  const runtime = baseArtifact ? baseArtifact.runtime : buildRuntimeFromDraft(draft);
+  const runtime = buildRuntimeFromDraft(draft);
+  const runtimeWithData = baseArtifact?.runtime.data
+    ? { ...runtime, data: baseArtifact.runtime.data }
+    : runtime;
   const nextNodes = Object.fromEntries(
-    Object.entries(runtime.nodes).map(([id, node]) => [id, cloneNode(node)])
+    Object.entries(runtimeWithData.nodes).map(([id, node]) => [id, cloneNode(node)])
   );
   applyDraftStyling(draft, nextNodes);
-  const ghostMap = draft.assets.ghostMap ?? runtime.ghostMap;
+  const ghostMap =
+    draft.assets.ghostMap ?? baseArtifact?.runtime.ghostMap ?? runtimeWithData.ghostMap;
 
   return {
     schemaVersion: COMPILED_SCHEMA_VERSION,
@@ -119,7 +123,7 @@ export const compileDraftArtifact = (
     compiledAt: new Date().toISOString(),
     css: baseArtifact?.css ?? '',
     runtime: {
-      ...runtime,
+      ...runtimeWithData,
       nodes: nextNodes,
       ghostMap,
     },

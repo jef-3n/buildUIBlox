@@ -6,9 +6,9 @@ import './inspector-panel';
 import { sampleCompiledArtifact } from './sample-compiled';
 import { sampleDraft } from './sample-draft';
 import type { FrameName } from './frame-types';
-import type { DraftArtifact } from './draft-contract';
+import type { DraftArtifact, DraftNode } from './draft-contract';
 import type { CompiledArtifact } from './compiled-contract';
-import { nodePathPattern, getNodeIdFromPath } from './paths';
+import { buildNodePath, nodePathPattern, getNodeIdFromPath } from './paths';
 import {
   normalizeDraftBindingPath,
   normalizeDraftStylerPath,
@@ -789,6 +789,8 @@ export class NuwaHost extends LitElement {
     if (
       (event.type === STYLER_UPDATE_PROP ||
         event.type === BINDING_UPDATE_PROP ||
+        event.type === WAREHOUSE_ADD_INTENT ||
+        event.type === WAREHOUSE_MOVE_INTENT ||
         event.type === GHOST_MAP_EDIT ||
         event.type === GHOST_RESIZE_FRAME) &&
       nextState.draft !== prevState.draft
@@ -797,7 +799,10 @@ export class NuwaHost extends LitElement {
       this.queueAutoCompile(nextState.draft.metadata.draftId);
     }
     if (
-      (event.type === GHOST_MAP_EDIT || event.type === GHOST_RESIZE_FRAME) &&
+      (event.type === GHOST_MAP_EDIT ||
+        event.type === GHOST_RESIZE_FRAME ||
+        event.type === WAREHOUSE_ADD_INTENT ||
+        event.type === WAREHOUSE_MOVE_INTENT) &&
       nextState.artifact !== prevState.artifact
     ) {
       this.compiledStore.write(nextState.artifact, 'local');
@@ -934,6 +939,8 @@ const draftLockGuardedEvents = new Set<HostEventType>([
   BINDING_UPDATE_PROP,
   GHOST_MAP_EDIT,
   GHOST_RESIZE_FRAME,
+  WAREHOUSE_ADD_INTENT,
+  WAREHOUSE_MOVE_INTENT,
   'ghost.trigger',
 ]);
 
@@ -968,6 +975,225 @@ const upsertGhostMapHotspot = (
   const nextGhostMap = ghostMap.filter((entry) => entry.id !== hotspot.id);
   nextGhostMap.push(nextHotspot);
   return nextGhostMap;
+};
+
+const getGridAreaColumnCount = (areas: string[]) => {
+  if (!areas.length) return 1;
+  const tokens = areas[0].replace(/"/g, '').trim().split(/\s+/).filter(Boolean);
+  return Math.max(1, tokens.length);
+};
+
+const addNodeToFrame = (frame: DraftArtifact['frames'][FrameName], nodeId: string) => {
+  if (!frame) {
+    return frame;
+  }
+  const nextOrder = frame.order.includes(nodeId) ? frame.order : [...frame.order, nodeId];
+  const nextPlacements = {
+    ...frame.placements,
+    [nodeId]: frame.placements[nodeId] ?? {},
+  };
+  if (!frame.grid.areas.some((area) => area.includes(nodeId))) {
+    const columnCount = getGridAreaColumnCount(frame.grid.areas);
+    const row = `"${Array.from({ length: columnCount }).fill(nodeId).join(' ')}"`;
+    return {
+      ...frame,
+      grid: {
+        ...frame.grid,
+        rows: frame.grid.rows ? `${frame.grid.rows} auto` : 'auto',
+        areas: [...frame.grid.areas, row],
+      },
+      order: nextOrder,
+      placements: {
+        ...nextPlacements,
+        [nodeId]: { ...nextPlacements[nodeId], area: nodeId },
+      },
+    };
+  }
+  return {
+    ...frame,
+    order: nextOrder,
+    placements: nextPlacements,
+  };
+};
+
+const createWarehouseInsert = (
+  draft: DraftArtifact,
+  payload: HostEventPayloadMap[typeof WAREHOUSE_ADD_INTENT]
+) => {
+  const usedIds = new Set(Object.keys(draft.nodes));
+  const insertNodes: Record<string, DraftNode> = {};
+  const createNodeId = (base: string) => {
+    let candidate = base;
+    let index = 1;
+    while (usedIds.has(candidate)) {
+      candidate = `${base}-${index}`;
+      index += 1;
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
+  const addNode = (nodeId: string, node: DraftNode) => {
+    insertNodes[nodeId] = node;
+    return nodeId;
+  };
+
+  switch (payload.itemId) {
+    case 'primitive.text': {
+      const nodeId = createNodeId('text');
+      addNode(nodeId, { type: 'text', props: { text: `${payload.label} content` } });
+      return { nodeId, nodes: insertNodes };
+    }
+    case 'primitive.image': {
+      const nodeId = createNodeId('image');
+      addNode(nodeId, {
+        type: 'image',
+        props: {
+          src: 'https://placehold.co/600x400?text=Image',
+          alt: payload.label,
+        },
+      });
+      return { nodeId, nodes: insertNodes };
+    }
+    case 'primitive.section': {
+      const nodeId = createNodeId('section');
+      const textId = createNodeId('section-text');
+      addNode(nodeId, {
+        type: 'section',
+        props: { className: 'section' },
+        children: [textId],
+      });
+      addNode(textId, {
+        type: 'text',
+        props: { text: `${payload.label} content` },
+      });
+      return { nodeId, nodes: insertNodes };
+    }
+    case 'primitive.button': {
+      const nodeId = createNodeId('button');
+      addNode(nodeId, { type: 'button', props: { text: payload.label } });
+      return { nodeId, nodes: insertNodes };
+    }
+    case 'template.hero': {
+      const nodeId = createNodeId('hero');
+      const titleId = createNodeId('hero-title');
+      const bodyId = createNodeId('hero-body');
+      addNode(nodeId, {
+        type: 'section',
+        props: { className: 'hero' },
+        children: [titleId, bodyId],
+      });
+      addNode(titleId, {
+        type: 'text',
+        props: { tag: 'h2', text: `${payload.label} headline` },
+      });
+      addNode(bodyId, {
+        type: 'text',
+        props: {
+          tag: 'p',
+          text: 'Describe the supporting details here.',
+          styler: { opacity: 0.86 },
+        },
+      });
+      return { nodeId, nodes: insertNodes };
+    }
+    case 'template.cardGrid': {
+      const nodeId = createNodeId('repeater');
+      const templateId = createNodeId('card-template');
+      const titleId = createNodeId('card-title');
+      const bodyId = createNodeId('card-body');
+      addNode(nodeId, {
+        type: 'repeater',
+        props: { className: 'card-grid', dataPath: 'catalog', templateId },
+      });
+      addNode(templateId, {
+        type: 'template',
+        props: { className: 'card' },
+        children: [titleId, bodyId],
+      });
+      addNode(titleId, {
+        type: 'text',
+        props: { tag: 'h3', textPath: 'title' },
+      });
+      addNode(bodyId, {
+        type: 'text',
+        props: { tag: 'p', textPath: 'description' },
+      });
+      return { nodeId, nodes: insertNodes };
+    }
+    case 'template.split': {
+      const nodeId = createNodeId('split');
+      const leftId = createNodeId('split-left');
+      const rightId = createNodeId('split-right');
+      const leftTextId = createNodeId('split-left-text');
+      const rightTextId = createNodeId('split-right-text');
+      addNode(nodeId, {
+        type: 'section',
+        props: { className: 'split' },
+        children: [leftId, rightId],
+      });
+      addNode(leftId, {
+        type: 'section',
+        children: [leftTextId],
+      });
+      addNode(rightId, {
+        type: 'section',
+        children: [rightTextId],
+      });
+      addNode(leftTextId, {
+        type: 'text',
+        props: { tag: 'h3', text: 'Left column' },
+      });
+      addNode(rightTextId, {
+        type: 'text',
+        props: { tag: 'h3', text: 'Right column' },
+      });
+      return { nodeId, nodes: insertNodes };
+    }
+    default:
+      return null;
+  }
+};
+
+const applyWarehouseInsert = (
+  draft: DraftArtifact,
+  insert: { nodeId: string; nodes: Record<string, DraftNode> }
+): DraftArtifact => {
+  const rootNode = draft.nodes[draft.rootNodeId];
+  const rootChildren = rootNode?.children ?? [];
+  const nextRootChildren = rootChildren.includes(insert.nodeId)
+    ? rootChildren
+    : [...rootChildren, insert.nodeId];
+
+  const nextFrames =
+    Object.keys(draft.frames).length === 0
+      ? draft.frames
+      : (Object.fromEntries(
+          Object.entries(draft.frames).map(([frameName, frame]) => [
+            frameName,
+            frame ? addNodeToFrame(frame, insert.nodeId) : frame,
+          ])
+        ) as DraftArtifact['frames']);
+
+  return {
+    ...draft,
+    nodes: {
+      ...draft.nodes,
+      ...insert.nodes,
+      ...(rootNode
+        ? {
+            [draft.rootNodeId]: {
+              ...rootNode,
+              children: nextRootChildren,
+            },
+          }
+        : {}),
+    },
+    frames: nextFrames,
+    metadata: {
+      ...draft.metadata,
+      updatedAt: new Date().toISOString(),
+    },
+  };
 };
 
 const hostEventHandlers: HostEventHandlerMap = {
@@ -1244,8 +1470,52 @@ const hostEventHandlers: HostEventHandlerMap = {
     };
   },
   'ghost.trigger': (state) => state,
-  [WAREHOUSE_ADD_INTENT]: (state) => state,
-  [WAREHOUSE_MOVE_INTENT]: (state) => state,
+  [WAREHOUSE_ADD_INTENT]: (state, event) => {
+    const insert = createWarehouseInsert(state.draft, event.payload);
+    if (!insert) {
+      return state;
+    }
+    const nextDraft = applyWarehouseInsert(state.draft, insert);
+    const nextArtifact = compileDraftArtifact(nextDraft, {
+      compiledId: state.artifact.compiledId,
+      baseArtifact: state.artifact,
+    });
+    const selectionPath = buildNodePath(insert.nodeId);
+    return {
+      ...state,
+      ui: { ...state.ui, activeSurface: 'canvas' },
+      selection: { path: selectionPath },
+      selectionsByFrame: {
+        ...state.selectionsByFrame,
+        [state.ui.activeFrame]: selectionPath,
+      },
+      draft: nextDraft,
+      artifact: nextArtifact,
+    };
+  },
+  [WAREHOUSE_MOVE_INTENT]: (state, event) => {
+    const insert = createWarehouseInsert(state.draft, event.payload);
+    if (!insert) {
+      return state;
+    }
+    const nextDraft = applyWarehouseInsert(state.draft, insert);
+    const nextArtifact = compileDraftArtifact(nextDraft, {
+      compiledId: state.artifact.compiledId,
+      baseArtifact: state.artifact,
+    });
+    const selectionPath = buildNodePath(insert.nodeId);
+    return {
+      ...state,
+      ui: { ...state.ui, activeSurface: 'canvas' },
+      selection: { path: selectionPath },
+      selectionsByFrame: {
+        ...state.selectionsByFrame,
+        [state.ui.activeFrame]: selectionPath,
+      },
+      draft: nextDraft,
+      artifact: nextArtifact,
+    };
+  },
   [BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY]: (state) => state,
   [BUILDER_UI_BOOTSTRAP_PUBLISH]: (state) => state,
   [BUILDER_UI_BOOTSTRAP_ROLLBACK]: (state) => state,
