@@ -1,5 +1,5 @@
 import type { FrameName } from '../host/frame-types';
-import type { ActiveSurface } from './ui-state';
+import type { ActiveSurface, UiDrawersState } from './ui-state';
 import {
   hasNumber,
   hasOptionalBoolean,
@@ -19,6 +19,8 @@ export type GlobalPresenceState = {
   activeFrame: FrameName;
   selectionPath?: string;
   activeSurface: ActiveSurface;
+  scale: number;
+  drawers: UiDrawersState;
   lastSeenAt: string;
   isLocal: boolean;
 };
@@ -31,6 +33,8 @@ export type GlobalSessionSnapshot = {
   activeFrame: FrameName;
   selectionPath?: string;
   activeSurface: ActiveSurface;
+  scale: number;
+  drawers: UiDrawersState;
   presence: Record<string, GlobalPresenceState>;
   draftId?: string;
   compiledId?: string;
@@ -47,6 +51,8 @@ export type GlobalSessionUpdate = {
   activeFrame: FrameName;
   selectionPath?: string;
   activeSurface: ActiveSurface;
+  scale: number;
+  drawers: UiDrawersState;
   draftId?: string;
   compiledId?: string;
   compiled?: GlobalSessionCompiledShadow;
@@ -99,6 +105,23 @@ const isFrameName = (value: unknown): value is FrameName =>
 const isActiveSurface = (value: unknown): value is ActiveSurface =>
   typeof value === 'string' && VALID_SURFACES.includes(value as ActiveSurface);
 
+const isUiDrawerState = (value: unknown): value is UiDrawersState => {
+  if (!isRecord(value)) return false;
+  return (
+    hasDrawerState(value.top) &&
+    hasDrawerState(value.left) &&
+    hasDrawerState(value.right) &&
+    hasDrawerState(value.bottom)
+  );
+};
+
+const hasDrawerState = (value: unknown) => {
+  if (!isRecord(value)) return false;
+  if (typeof value.open !== 'boolean') return false;
+  if (!hasNumber(value.size)) return false;
+  return true;
+};
+
 const isGlobalSessionUpdate = (value: unknown): value is GlobalSessionUpdate => {
   if (!isRecord(value)) return false;
   if (!hasString(value.schemaVersion)) return false;
@@ -109,6 +132,8 @@ const isGlobalSessionUpdate = (value: unknown): value is GlobalSessionUpdate => 
   if (!isFrameName(value.activeFrame)) return false;
   if (!hasOptionalString(value.selectionPath)) return false;
   if (!isActiveSurface(value.activeSurface)) return false;
+  if (!hasNumber(value.scale)) return false;
+  if (!isUiDrawerState(value.drawers)) return false;
   if (!hasOptionalString(value.draftId)) return false;
   if (!hasOptionalString(value.compiledId)) return false;
   if (!isOptionalPipelineState(value.pipeline)) return false;
@@ -127,6 +152,8 @@ const isGlobalPresenceState = (value: unknown): value is GlobalPresenceState => 
   if (!isFrameName(value.activeFrame)) return false;
   if (!hasOptionalString(value.selectionPath)) return false;
   if (!isActiveSurface(value.activeSurface)) return false;
+  if (!hasNumber(value.scale)) return false;
+  if (!isUiDrawerState(value.drawers)) return false;
   if (!hasString(value.lastSeenAt)) return false;
   if (typeof value.isLocal !== 'boolean') return false;
   return true;

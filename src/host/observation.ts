@@ -4,6 +4,9 @@ import type { ObservationCategory, ObservationPacket } from './telemetry';
 import type { ActiveSelection } from '../contracts/active-selection';
 import {
   STYLER_UPDATE_PROP,
+  UI_DRAWER_CLOSE,
+  UI_DRAWER_OPEN,
+  UI_SET_SCALE,
   type HostEventEnvelope,
   type HostEventType,
 } from '../contracts/event-envelope';
@@ -27,6 +30,9 @@ export const resolveObservationCategory = (
       return 'selection';
     case STYLER_UPDATE_PROP:
       return 'draft';
+    case UI_SET_SCALE:
+    case UI_DRAWER_OPEN:
+    case UI_DRAWER_CLOSE:
     case 'pipeline.state':
     case 'session.state':
     case 'ui.surface':
@@ -60,6 +66,19 @@ export const buildObservationPayload = (
         compiledId: nextState.artifact.compiledId,
         draftId: nextState.draft.draftId,
         activeSurface: nextState.ui.activeSurface,
+      };
+    case UI_SET_SCALE:
+      return {
+        scale: nextState.ui.scale,
+      };
+    case UI_DRAWER_OPEN:
+      return {
+        drawer: event.payload.drawer,
+        size: event.payload.size ?? nextState.ui.drawers[event.payload.drawer].size,
+      };
+    case UI_DRAWER_CLOSE:
+      return {
+        drawer: event.payload.drawer,
       };
     case 'session.sync':
       return {

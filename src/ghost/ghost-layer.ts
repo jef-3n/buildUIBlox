@@ -114,7 +114,12 @@ export class GhostLayer extends LitElement {
     if (!hotspot) {
       return;
     }
-    const rect = target?.getBoundingClientRect();
+    const rect = new DOMRect(
+      hotspot.rect.x,
+      hotspot.rect.y,
+      hotspot.rect.w,
+      hotspot.rect.h
+    );
     const path = hotspot.path ?? buildElementPath(hotspot.id);
 
     const selectionDetail: GhostSelectDetail = {

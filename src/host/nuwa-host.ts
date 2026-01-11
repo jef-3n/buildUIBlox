@@ -15,6 +15,9 @@ import {
   STYLER_UPDATE_PROP,
   createHostEventEnvelope,
   isCompatibleHostEventEnvelope,
+  UI_DRAWER_CLOSE,
+  UI_DRAWER_OPEN,
+  UI_SET_SCALE,
   type HostEventEnvelope,
   type HostEventPayloadMap,
   type HostEventType,
@@ -30,6 +33,11 @@ import {
   createSharedSession,
 } from './shared-session';
 import { type HostState, createObservationPacket } from './observation';
+import {
+  DEFAULT_UI_SCALE,
+  createUiDrawersState,
+  type DrawerName,
+} from '../contracts/ui-state';
 import {
   BUILDER_UI_REGISTRY_BOUNDARY,
   builderUiManifest,
@@ -52,6 +60,8 @@ export class NuwaHost extends LitElement {
     activeFrame: 'desktop',
     selectionPath: undefined,
     activeSurface: 'canvas',
+    scale: DEFAULT_UI_SCALE,
+    drawers: createUiDrawersState(),
     draftId: sampleCompiledArtifact.draftId,
     compiledId: sampleCompiledArtifact.compiledId,
   });
@@ -64,7 +74,12 @@ export class NuwaHost extends LitElement {
 
   @state()
   private hostState: HostState = {
-    ui: { activeFrame: 'desktop', activeSurface: 'canvas' },
+    ui: {
+      activeFrame: 'desktop',
+      activeSurface: 'canvas',
+      scale: DEFAULT_UI_SCALE,
+      drawers: createUiDrawersState(),
+    },
     selection: { path: undefined },
     selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
     artifact: sampleCompiledArtifact,
@@ -82,8 +97,14 @@ export class NuwaHost extends LitElement {
   static styles = css`
     :host {
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr) auto;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-rows:
+        var(--drawer-top-size, auto)
+        minmax(0, 1fr)
+        var(--drawer-bottom-size, auto);
+      grid-template-columns:
+        var(--drawer-left-size, auto)
+        minmax(0, 1fr)
+        var(--drawer-right-size, auto);
       grid-template-areas:
         'top top top'
         'left center right'
@@ -93,22 +114,35 @@ export class NuwaHost extends LitElement {
 
     .drawer {
       display: flex;
+      overflow: hidden;
     }
 
     .top {
       grid-area: top;
+      height: var(--drawer-top-size, auto);
+      visibility: var(--drawer-top-visibility, visible);
+      pointer-events: var(--drawer-top-pointer, auto);
     }
 
     .left {
       grid-area: left;
+      width: var(--drawer-left-size, auto);
+      visibility: var(--drawer-left-visibility, visible);
+      pointer-events: var(--drawer-left-pointer, auto);
     }
 
     .right {
       grid-area: right;
+      width: var(--drawer-right-size, auto);
+      visibility: var(--drawer-right-visibility, visible);
+      pointer-events: var(--drawer-right-pointer, auto);
     }
 
     .bottom {
       grid-area: bottom;
+      height: var(--drawer-bottom-size, auto);
+      visibility: var(--drawer-bottom-visibility, visible);
+      pointer-events: var(--drawer-bottom-pointer, auto);
     }
 
     .center {
@@ -185,6 +219,7 @@ export class NuwaHost extends LitElement {
     );
     this.sharedSession.connect();
     this.loadBuilderUiSlots();
+    this.applyUiCssVars();
   }
 
   disconnectedCallback() {
@@ -223,6 +258,7 @@ export class NuwaHost extends LitElement {
             .draft=${this.hostState.draft}
             .activeFrame=${activeFrame}
             .selectedPath=${this.hostState.selection.path}
+            .scale=${this.hostState.ui.scale}
           ></compiled-canvas>
         </slot>
       </main>
@@ -368,6 +404,65 @@ export class NuwaHost extends LitElement {
     this.emitHostEvent('session.sync', { session: detail.state }, 'shared-session');
   }
 
+  protected updated(changedProperties: Map<PropertyKey, unknown>) {
+    super.updated(changedProperties);
+    if (changedProperties.has('hostState')) {
+      this.applyUiCssVars();
+    }
+  }
+
+  private applyUiCssVars() {
+    const { drawers } = this.hostState.ui;
+    this.style.setProperty(
+      '--drawer-top-size',
+      `${drawers.top.open ? drawers.top.size : 0}px`
+    );
+    this.style.setProperty(
+      '--drawer-left-size',
+      `${drawers.left.open ? drawers.left.size : 0}px`
+    );
+    this.style.setProperty(
+      '--drawer-right-size',
+      `${drawers.right.open ? drawers.right.size : 0}px`
+    );
+    this.style.setProperty(
+      '--drawer-bottom-size',
+      `${drawers.bottom.open ? drawers.bottom.size : 0}px`
+    );
+    this.style.setProperty(
+      '--drawer-top-visibility',
+      drawers.top.open ? 'visible' : 'hidden'
+    );
+    this.style.setProperty(
+      '--drawer-left-visibility',
+      drawers.left.open ? 'visible' : 'hidden'
+    );
+    this.style.setProperty(
+      '--drawer-right-visibility',
+      drawers.right.open ? 'visible' : 'hidden'
+    );
+    this.style.setProperty(
+      '--drawer-bottom-visibility',
+      drawers.bottom.open ? 'visible' : 'hidden'
+    );
+    this.style.setProperty(
+      '--drawer-top-pointer',
+      drawers.top.open ? 'auto' : 'none'
+    );
+    this.style.setProperty(
+      '--drawer-left-pointer',
+      drawers.left.open ? 'auto' : 'none'
+    );
+    this.style.setProperty(
+      '--drawer-right-pointer',
+      drawers.right.open ? 'auto' : 'none'
+    );
+    this.style.setProperty(
+      '--drawer-bottom-pointer',
+      drawers.bottom.open ? 'auto' : 'none'
+    );
+  }
+
   private async loadBuilderUiSlots() {
     const registryResult = loadBuilderUiRegistry(builderUiManifest);
     if (!registryResult.ok) {
@@ -511,6 +606,8 @@ export class NuwaHost extends LitElement {
       activeFrame: nextState.ui.activeFrame,
       selectionPath: nextState.selection.path,
       activeSurface: nextState.ui.activeSurface,
+      scale: nextState.ui.scale,
+      drawers: nextState.ui.drawers,
     });
   }
 }
@@ -566,6 +663,51 @@ const hostEventHandlers: HostEventHandlerMap = {
       },
     };
   },
+  [UI_SET_SCALE]: (state, event) => {
+    if (state.ui.scale === event.payload.scale) {
+      return state;
+    }
+    const nextScale = Math.max(0.1, event.payload.scale);
+    return {
+      ...state,
+      ui: { ...state.ui, scale: nextScale },
+    };
+  },
+  [UI_DRAWER_OPEN]: (state, event) => {
+    const drawer = event.payload.drawer as DrawerName;
+    const current = state.ui.drawers[drawer];
+    const size = event.payload.size ?? current.size;
+    if (current.open && current.size === size) {
+      return state;
+    }
+    return {
+      ...state,
+      ui: {
+        ...state.ui,
+        drawers: {
+          ...state.ui.drawers,
+          [drawer]: { open: true, size },
+        },
+      },
+    };
+  },
+  [UI_DRAWER_CLOSE]: (state, event) => {
+    const drawer = event.payload.drawer as DrawerName;
+    const current = state.ui.drawers[drawer];
+    if (!current.open) {
+      return state;
+    }
+    return {
+      ...state,
+      ui: {
+        ...state.ui,
+        drawers: {
+          ...state.ui.drawers,
+          [drawer]: { ...current, open: false },
+        },
+      },
+    };
+  },
   [STYLER_UPDATE_PROP]: (state, event) => {
     const targetFrame = event.payload.frame ?? state.ui.activeFrame;
     const normalizedPath = normalizeDraftStylerPath(event.payload.path, targetFrame);
@@ -588,6 +730,8 @@ const hostEventHandlers: HostEventHandlerMap = {
     const nextUi = {
       activeFrame: nextFrame,
       activeSurface: session.activeSurface ?? state.ui.activeSurface,
+      scale: session.scale ?? state.ui.scale,
+      drawers: session.drawers ?? state.ui.drawers,
     };
 
     let nextSelection = state.selection.path;

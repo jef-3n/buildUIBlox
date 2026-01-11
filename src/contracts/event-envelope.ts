@@ -7,6 +7,7 @@ import {
 } from './global-session';
 import type { ActiveSurface } from './ui-state';
 import {
+  hasNumber,
   hasOptionalString,
   hasString,
   isRecord,
@@ -15,6 +16,9 @@ import {
 export const HOST_EVENT_ENVELOPE_VERSION = 'host-event.v1' as const;
 export const HOST_EVENT_ENVELOPE_EVENT = 'HOST_EVENT_ENVELOPE';
 export const STYLER_UPDATE_PROP = 'styler.updateProp' as const;
+export const UI_SET_SCALE = 'ui.setScale' as const;
+export const UI_DRAWER_OPEN = 'ui.drawer.open' as const;
+export const UI_DRAWER_CLOSE = 'ui.drawer.close' as const;
 
 export const COMPATIBLE_HOST_EVENT_ENVELOPE_VERSIONS = new Set<string>([
   HOST_EVENT_ENVELOPE_VERSION,
@@ -24,6 +28,9 @@ export type HostEventType =
   | 'ui.setFrame'
   | 'ui.surface'
   | 'selection.set'
+  | typeof UI_SET_SCALE
+  | typeof UI_DRAWER_OPEN
+  | typeof UI_DRAWER_CLOSE
   | typeof STYLER_UPDATE_PROP
   | 'session.sync'
   | 'session.state'
@@ -40,6 +47,9 @@ export type HostEventPayloadMap = {
     hotspotId?: string;
     source?: string;
   };
+  [UI_SET_SCALE]: { scale: number };
+  [UI_DRAWER_OPEN]: { drawer: 'top' | 'left' | 'right' | 'bottom'; size?: number };
+  [UI_DRAWER_CLOSE]: { drawer: 'top' | 'left' | 'right' | 'bottom' };
   [STYLER_UPDATE_PROP]: { path: string; value: unknown; frame?: FrameName };
   'session.sync': { session: GlobalSessionSnapshot };
   'session.state': { session: GlobalSessionSnapshot; origin: 'local' | 'remote' };
@@ -71,6 +81,7 @@ const VALID_SURFACES: ActiveSurface[] = [
   'telemetry',
   'unknown',
 ];
+const VALID_DRAWERS = ['top', 'left', 'right', 'bottom'] as const;
 
 const isFrameName = (value: unknown): value is FrameName =>
   typeof value === 'string' && VALID_FRAMES.includes(value as FrameName);
@@ -96,6 +107,16 @@ const hasHostEventPayload = (
         hasString(payload.path) &&
         (typeof payload.frame === 'undefined' || isFrameName(payload.frame))
       );
+    case UI_SET_SCALE:
+      return hasNumber(payload.scale);
+    case UI_DRAWER_OPEN:
+      return (
+        hasString(payload.drawer) &&
+        VALID_DRAWERS.includes(payload.drawer) &&
+        (typeof payload.size === 'undefined' || hasNumber(payload.size))
+      );
+    case UI_DRAWER_CLOSE:
+      return hasString(payload.drawer) && VALID_DRAWERS.includes(payload.drawer);
     case STYLER_UPDATE_PROP:
       return (
         hasString(payload.path) &&
