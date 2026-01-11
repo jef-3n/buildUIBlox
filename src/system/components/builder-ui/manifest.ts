@@ -18,6 +18,19 @@ export type BuilderUiRegistry = {
 export type BuilderUiBootstrapState = {
   isSelfHosting: boolean;
   activeRegistry: BuilderUiRegistryKey;
+  versionPin?: string;
+  fallbackRegistry: BuilderUiRegistryKey;
+  snapshots: BuilderUiRegistrySnapshot[];
+};
+
+export type BuilderUiBootstrapSnapshotState = Omit<BuilderUiBootstrapState, 'snapshots'>;
+
+export type BuilderUiRegistrySnapshot = {
+  version: string;
+  boundary: string;
+  activeRegistry: BuilderUiRegistryKey;
+  registry: BuilderUiRegistry;
+  bootstrap: BuilderUiBootstrapSnapshotState;
 };
 
 export type BuilderUiManifest = {
@@ -56,6 +69,10 @@ export const validateBuilderUiManifest = (manifest: BuilderUiManifest): BuilderU
     errors.push('bootstrap.activeRegistry must be local or remote');
   }
 
+  if (!isRegistryKey(manifest.bootstrap.fallbackRegistry)) {
+    errors.push('bootstrap.fallbackRegistry must be local or remote');
+  }
+
   registryKeyList.forEach((key) => {
     const registry = manifest.registries[key];
     if (!registry) {
@@ -88,6 +105,8 @@ export const createBuilderUiManifest = (
     bootstrap: {
       isSelfHosting: false,
       activeRegistry: 'local',
+      fallbackRegistry: 'local',
+      snapshots: [],
     },
     registries: {
       local: {
