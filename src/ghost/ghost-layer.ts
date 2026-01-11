@@ -38,6 +38,7 @@ export type GhostTriggerDetail = {
 
 export type GhostEditDetail = {
   path: string;
+  frame?: FrameName;
   rect?: DOMRect;
   hotspotId: string;
 };
@@ -153,6 +154,7 @@ export class GhostLayer extends LitElement {
     if (this.editMode || event.altKey) {
       const editDetail: GhostEditDetail = {
         path,
+        frame: hotspot.frame,
         rect,
         hotspotId: hotspot.id,
       };

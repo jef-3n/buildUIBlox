@@ -25,6 +25,7 @@ export const WAREHOUSE_MOVE_INTENT = 'warehouse.moveIntent' as const;
 export const PIPELINE_TRIGGER = 'pipeline.trigger' as const;
 export const PIPELINE_ABORT = 'pipeline.abort' as const;
 export const PIPELINE_PUBLISH = 'pipeline.publish' as const;
+export const GHOST_MAP_EDIT = 'ghostMap.edit' as const;
 export const BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY =
   'builderUi.bootstrap.toggleRegistry' as const;
 export const BUILDER_UI_BOOTSTRAP_PUBLISH = 'builderUi.bootstrap.publish' as const;
@@ -50,6 +51,7 @@ export type HostEventType =
   | typeof PIPELINE_TRIGGER
   | typeof PIPELINE_ABORT
   | typeof PIPELINE_PUBLISH
+  | typeof GHOST_MAP_EDIT
   | 'ghost.trigger'
   | typeof WAREHOUSE_ADD_INTENT
   | typeof WAREHOUSE_MOVE_INTENT
@@ -81,6 +83,12 @@ export type HostEventPayloadMap = {
   [PIPELINE_TRIGGER]: { draftId: string };
   [PIPELINE_ABORT]: { reason?: string };
   [PIPELINE_PUBLISH]: { compiledId?: string; draftId?: string };
+  [GHOST_MAP_EDIT]: {
+    path: string;
+    frame?: FrameName;
+    rect: DOMRect;
+    hotspotId: string;
+  };
   'ghost.trigger': {
     type: string;
     payload?: unknown;
@@ -150,6 +158,13 @@ const isActiveSurface = (value: unknown): value is ActiveSurface =>
 const isSessionOrigin = (value: unknown): value is 'local' | 'remote' =>
   value === 'local' || value === 'remote';
 
+const isDomRect = (value: unknown): value is DOMRect =>
+  isRecord(value) &&
+  hasNumber(value.x) &&
+  hasNumber(value.y) &&
+  hasNumber(value.width) &&
+  hasNumber(value.height);
+
 const isBuilderUiRegistryKey = (value: unknown): value is BuilderUiRegistryKey =>
   typeof value === 'string' && BUILDER_UI_REGISTRY_KEYS.includes(value as BuilderUiRegistryKey);
 
@@ -205,6 +220,13 @@ const hasHostEventPayload = (
       return (
         (typeof payload.compiledId === 'undefined' || hasString(payload.compiledId)) &&
         (typeof payload.draftId === 'undefined' || hasString(payload.draftId))
+      );
+    case GHOST_MAP_EDIT:
+      return (
+        hasString(payload.path) &&
+        hasString(payload.hotspotId) &&
+        isDomRect(payload.rect) &&
+        (typeof payload.frame === 'undefined' || isFrameName(payload.frame))
       );
     case 'ghost.trigger':
       return hasString(payload.type) && hasString(payload.path) && hasString(payload.hotspotId);

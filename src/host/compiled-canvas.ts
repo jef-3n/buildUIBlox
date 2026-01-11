@@ -12,9 +12,9 @@ import type {
   GhostEditDetail,
 } from '../ghost/ghost-layer';
 import {
+  GHOST_MAP_EDIT,
   HOST_EVENT_ENVELOPE_EVENT,
   createHostEventEnvelope,
-  STYLER_UPDATE_PROP,
 } from '../contracts/event-envelope';
 import { getElementIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
@@ -365,31 +365,21 @@ export class CompiledCanvas extends LitElement {
     if (!this.ghostAuthority) {
       return;
     }
-    const { path, rect } = event.detail;
-    const nodeId = getElementIdFromPath(path);
-    if (!nodeId || !rect) {
+    const { path, rect, frame, hotspotId } = event.detail;
+    if (!rect) {
       return;
     }
-    const width = `${Math.round(rect.width)}px`;
-    const height = `${Math.round(rect.height)}px`;
-    const widthEnvelope = createHostEventEnvelope(
-      STYLER_UPDATE_PROP,
-      { path: `elements.${nodeId}.props.styler.width`, value: width },
+    const envelope = createHostEventEnvelope(
+      GHOST_MAP_EDIT,
+      { path, rect, frame, hotspotId },
       'ghost-layer'
     );
-    const heightEnvelope = createHostEventEnvelope(
-      STYLER_UPDATE_PROP,
-      { path: `elements.${nodeId}.props.styler.height`, value: height },
-      'ghost-layer'
+    this.dispatchEvent(
+      new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
+        detail: envelope,
+        bubbles: true,
+        composed: true,
+      })
     );
-    [widthEnvelope, heightEnvelope].forEach((envelope) => {
-      this.dispatchEvent(
-        new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
-          detail: envelope,
-          bubbles: true,
-          composed: true,
-        })
-      );
-    });
   }
 }
