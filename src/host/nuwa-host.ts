@@ -9,9 +9,17 @@ import { normalizeFrameScopedPath, setPathValue } from './path-edits';
 import type { CompiledArtifact } from './compiled-canvas';
 import type { ObservationCategory, ObservationPacket } from './telemetry';
 import './telemetry-sniffer';
+import {
+  SHARED_SESSION_UPDATE_EVENT,
+  type ActiveSurface,
+  type SharedSessionEventDetail,
+  type SharedSessionSnapshot,
+  createSharedSession,
+} from './shared-session';
 
 type UiState = {
   activeFrame: FrameName;
+  activeSurface: ActiveSurface;
 };
 
 type SelectionState = {
@@ -31,15 +39,21 @@ type HostEvent =
   | {
       type: 'ARTIFACT_PATH_EDIT';
       payload: { path: string; value: unknown; frame?: FrameName };
-    };
+    }
+  | { type: 'SESSION_SYNC'; payload: { session: SharedSessionSnapshot } };
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
   private observationSequence = 0;
+  private sharedSession = createSharedSession({
+    activeFrame: 'desktop',
+    selectionPath: undefined,
+    activeSurface: 'canvas',
+  });
 
   @state()
   private hostState: HostState = {
-    ui: { activeFrame: 'desktop' },
+    ui: { activeFrame: 'desktop', activeSurface: 'canvas' },
     selection: { path: undefined },
     selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
     artifact: sampleCompiledArtifact,
@@ -142,10 +156,20 @@ export class NuwaHost extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.addEventListener('UI_SET_FRAME', this.handleFrameSwitch as EventListener);
+    this.sharedSession.addEventListener(
+      SHARED_SESSION_UPDATE_EVENT,
+      this.handleSharedSessionUpdate as EventListener
+    );
+    this.sharedSession.connect();
   }
 
   disconnectedCallback() {
     this.removeEventListener('UI_SET_FRAME', this.handleFrameSwitch as EventListener);
+    this.sharedSession.removeEventListener(
+      SHARED_SESSION_UPDATE_EVENT,
+      this.handleSharedSessionUpdate as EventListener
+    );
+    this.sharedSession.disconnect();
     super.disconnectedCallback();
   }
 
@@ -254,6 +278,16 @@ export class NuwaHost extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private handleSharedSessionUpdate(event: CustomEvent<SharedSessionEventDetail>) {
+    const detail = event.detail;
+    if (!detail || detail.origin !== 'remote') {
+      return;
+    }
+    this.dispatch({ type: 'SESSION_SYNC', payload: { session: detail.state } });
+  }
+
   private handleFrameSwitch(event: CustomEvent<{ frame: FrameName }>) {
     event.stopPropagation();
     const frame = event.detail?.frame;
@@ -291,6 +325,7 @@ export class NuwaHost extends LitElement {
     }
     this.hostState = nextState;
     this.emitObservationPacket(event, nextState, prevState);
+    this.syncSharedSession(event, nextState);
   }
 
   private emitObservationPacket(event: HostEvent, nextState: HostState, prevState: HostState) {
@@ -330,11 +365,13 @@ export class NuwaHost extends LitElement {
         return {
           frame: nextState.ui.activeFrame,
           previousFrame: prevState.ui.activeFrame,
+          activeSurface: nextState.ui.activeSurface,
         };
       case 'SELECTION_SET':
         return {
           path: nextState.selection.path,
           frame: nextState.ui.activeFrame,
+          activeSurface: nextState.ui.activeSurface,
         };
       case 'ARTIFACT_PATH_EDIT':
         return {
@@ -342,14 +379,38 @@ export class NuwaHost extends LitElement {
           frame: event.payload.frame ?? nextState.ui.activeFrame,
           compiledId: nextState.artifact.compiledId,
           draftId: nextState.artifact.draftId,
+          activeSurface: nextState.ui.activeSurface,
+        };
+      case 'SESSION_SYNC':
+        return {
+          frame: nextState.ui.activeFrame,
+          path: nextState.selection.path,
+          activeSurface: nextState.ui.activeSurface,
+          sessionId: event.payload.session.sessionId,
         };
       default:
         return {};
     }
   }
+
+  private syncSharedSession(event: HostEvent, nextState: HostState) {
+    if (event.type === 'SESSION_SYNC') {
+      return;
+    }
+    this.sharedSession.update({
+      activeFrame: nextState.ui.activeFrame,
+      selectionPath: nextState.selection.path,
+      activeSurface: nextState.ui.activeSurface,
+    });
+  }
 }
 
 const hostReducer = (state: HostState, event: HostEvent): HostState => {
+  // Active surface rules:
+  // - UI_SET_FRAME -> frames
+  // - SELECTION_SET -> canvas
+  // - ARTIFACT_PATH_EDIT -> metadata
+  // - SESSION_SYNC -> use session-provided activeSurface
   switch (event.type) {
     case 'UI_SET_FRAME': {
       if (state.ui.activeFrame === event.payload.frame) {
@@ -365,8 +426,12 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
       );
       return {
         ...state,
-        ui: { activeFrame: nextFrame },
-        selection: { path: state.selectionsByFrame[nextFrame] },
+        ui: { activeFrame: nextFrame, activeSurface: 'frames' },
+        selection: { path: nextSelection },
+        selectionsByFrame: {
+          ...state.selectionsByFrame,
+          [nextFrame]: nextSelection,
+        },
       };
     }
     case 'SELECTION_SET': {
@@ -375,6 +440,7 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
       }
       return {
         ...state,
+        ui: { ...state.ui, activeSurface: 'canvas' },
         selection: { path: event.payload.path },
         selectionsByFrame: {
           ...state.selectionsByFrame,
@@ -394,7 +460,58 @@ const hostReducer = (state: HostState, event: HostEvent): HostState => {
       }
       return {
         ...state,
+        ui: { ...state.ui, activeSurface: 'metadata' },
         artifact: nextArtifact,
+      };
+    }
+    case 'SESSION_SYNC': {
+      const { session } = event.payload;
+      const nextFrame = session.activeFrame ?? state.ui.activeFrame;
+      const nextUi = {
+        activeFrame: nextFrame,
+        activeSurface: session.activeSurface ?? state.ui.activeSurface,
+      };
+
+      let nextSelection = state.selection.path;
+      let nextSelectionsByFrame = state.selectionsByFrame;
+
+      if (nextFrame !== state.ui.activeFrame) {
+        const candidates = [
+          session.selectionPath,
+          state.selectionsByFrame[nextFrame],
+          state.selection.path,
+        ];
+        const resolvedSelection = candidates.find((selectionPath) =>
+          isSelectionInFrame(state.artifact, nextFrame, selectionPath)
+        );
+        nextSelection = resolvedSelection;
+        nextSelectionsByFrame = {
+          ...state.selectionsByFrame,
+          [nextFrame]: resolvedSelection,
+        };
+      }
+
+      if (session.selectionPath !== nextSelection) {
+        if (!session.selectionPath) {
+          nextSelection = undefined;
+          nextSelectionsByFrame = {
+            ...nextSelectionsByFrame,
+            [nextFrame]: undefined,
+          };
+        } else if (isSelectionInFrame(state.artifact, nextFrame, session.selectionPath)) {
+          nextSelection = session.selectionPath;
+          nextSelectionsByFrame = {
+            ...nextSelectionsByFrame,
+            [nextFrame]: session.selectionPath,
+          };
+        }
+      }
+
+      return {
+        ...state,
+        ui: nextUi,
+        selection: { path: nextSelection },
+        selectionsByFrame: nextSelectionsByFrame,
       };
     }
     default:
