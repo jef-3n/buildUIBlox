@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit';
+import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
 import './selection-metadata';
@@ -16,6 +17,12 @@ import {
   type SharedSessionSnapshot,
   createSharedSession,
 } from './shared-session';
+import {
+  BUILDER_UI_REGISTRY_BOUNDARY,
+  builderUiManifest,
+  type BuilderUiComponentEntry,
+} from '../system/components/builder-ui/manifest';
+import { loadBuilderUiRegistry } from '../system/components/builder-ui/registry';
 
 type UiState = {
   activeFrame: FrameName;
@@ -31,6 +38,15 @@ type HostState = {
   selection: SelectionState;
   selectionsByFrame: Record<FrameName, string | undefined>;
   artifact: CompiledArtifact;
+};
+
+type HostSlotName = 'top' | 'left' | 'right' | 'bottom';
+
+type HostSlotReplacementState = {
+  status: 'idle' | 'loading' | 'ready' | 'failed';
+  entry?: BuilderUiComponentEntry;
+  tagName?: string;
+  error?: string;
 };
 
 type HostEvent =
@@ -50,6 +66,12 @@ export class NuwaHost extends LitElement {
     selectionPath: undefined,
     activeSurface: 'canvas',
   });
+  private slotLoadSequence: Record<HostSlotName, number> = {
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  };
 
   @state()
   private hostState: HostState = {
@@ -57,6 +79,14 @@ export class NuwaHost extends LitElement {
     selection: { path: undefined },
     selectionsByFrame: { desktop: undefined, tablet: undefined, mobile: undefined },
     artifact: sampleCompiledArtifact,
+  };
+
+  @state()
+  private slotReplacementState: Record<HostSlotName, HostSlotReplacementState> = {
+    top: { status: 'idle' },
+    left: { status: 'idle' },
+    right: { status: 'idle' },
+    bottom: { status: 'idle' },
   };
 
   static styles = css`
@@ -161,6 +191,7 @@ export class NuwaHost extends LitElement {
       this.handleSharedSessionUpdate as EventListener
     );
     this.sharedSession.connect();
+    this.loadBuilderUiSlots();
   }
 
   disconnectedCallback() {
@@ -177,11 +208,17 @@ export class NuwaHost extends LitElement {
     const activeFrame = this.hostState.ui.activeFrame;
     return html`
       <div class="drawer top">
-        <slot name="top"><div class="stub">Top drawer</div></slot>
+        ${this.renderSlotReplacement(
+          'top',
+          html`<div class="stub">Top drawer</div>`
+        )}
         ${this.renderFrameToggle(activeFrame)}
       </div>
       <div class="drawer left">
-        <slot name="left"><div class="stub">Left drawer</div></slot>
+        ${this.renderSlotReplacement(
+          'left',
+          html`<div class="stub">Left drawer</div>`
+        )}
       </div>
       <main class="center">
         <slot>
@@ -195,19 +232,35 @@ export class NuwaHost extends LitElement {
         </slot>
       </main>
       <div class="drawer right">
-        <slot name="right">
-          <telemetry-sniffer
-            .activeFrame=${activeFrame}
-            .selectionPath=${this.hostState.selection.path ?? ''}
-            .compiledId=${this.hostState.artifact.compiledId}
-            .draftId=${this.hostState.artifact.draftId}
-          ></telemetry-sniffer>
-        </slot>
+        ${this.renderSlotReplacement(
+          'right',
+          html`
+            <telemetry-sniffer
+              .activeFrame=${activeFrame}
+              .selectionPath=${this.hostState.selection.path ?? ''}
+              .compiledId=${this.hostState.artifact.compiledId}
+              .draftId=${this.hostState.artifact.draftId}
+            ></telemetry-sniffer>
+          `
+        )}
       </div>
       <div class="drawer bottom">
-        <slot name="bottom"><div class="stub">Bottom drawer</div></slot>
+        ${this.renderSlotReplacement(
+          'bottom',
+          html`<div class="stub">Bottom drawer</div>`
+        )}
       </div>
     `;
+  }
+
+  private renderSlotReplacement(slotName: HostSlotName, fallback: unknown) {
+    const slotState = this.slotReplacementState[slotName];
+    if (slotState?.status === 'ready' && slotState.tagName) {
+      const tagName = unsafeStatic(slotState.tagName);
+      return staticHtml`<${tagName}></${tagName}>`;
+    }
+
+    return html`<slot name=${slotName}>${fallback}</slot>`;
   }
 
   private renderFrameToggle(activeFrame: FrameName) {
@@ -286,6 +339,97 @@ export class NuwaHost extends LitElement {
       return;
     }
     this.dispatch({ type: 'SESSION_SYNC', payload: { session: detail.state } });
+  }
+
+  private async loadBuilderUiSlots() {
+    const registryResult = loadBuilderUiRegistry(builderUiManifest);
+    if (!registryResult.ok) {
+      return;
+    }
+
+    const { registry, boundary } = registryResult.snapshot;
+    const entriesById = new Map(registry.entries.map((entry) => [entry.id, entry]));
+    const slotReplacementOrder: HostSlotName[] = ['top', 'left', 'right', 'bottom'];
+    const slotEntryMap: Partial<Record<HostSlotName, string>> = {
+      top: `${BUILDER_UI_REGISTRY_BOUNDARY}toolbar`,
+    };
+
+    for (const slotName of slotReplacementOrder) {
+      const entryId = slotEntryMap[slotName];
+      if (!entryId) {
+        continue;
+      }
+      const entry = entriesById.get(entryId);
+      if (!entry) {
+        continue;
+      }
+      await this.loadSlotReplacement(slotName, entry, boundary);
+    }
+  }
+
+  private resolveSlotModulePath(modulePath: string, boundary: string) {
+    if (modulePath.startsWith('http://') || modulePath.startsWith('https://')) {
+      return modulePath;
+    }
+    if (modulePath.startsWith('/src/')) {
+      return modulePath;
+    }
+    if (modulePath.startsWith(boundary)) {
+      return `/src${modulePath}`;
+    }
+    return modulePath;
+  }
+
+  private resolveSlotTagName(
+    module: Record<string, unknown>,
+    entry: BuilderUiComponentEntry
+  ): string | undefined {
+    const exportKey = entry.exportName ?? 'default';
+    const candidate =
+      exportKey === 'default'
+        ? module.default ?? module.elementTag ?? module.tagName
+        : module[exportKey];
+    return typeof candidate === 'string' ? candidate : undefined;
+  }
+
+  private async loadSlotReplacement(
+    slotName: HostSlotName,
+    entry: BuilderUiComponentEntry,
+    boundary: string
+  ) {
+    const loadSequence = ++this.slotLoadSequence[slotName];
+    this.slotReplacementState = {
+      ...this.slotReplacementState,
+      [slotName]: { status: 'loading', entry },
+    };
+
+    try {
+      const modulePath = this.resolveSlotModulePath(entry.modulePath, boundary);
+      const loadedModule = (await import(/* @vite-ignore */ modulePath)) as Record<
+        string,
+        unknown
+      >;
+      const tagName = this.resolveSlotTagName(loadedModule, entry);
+      if (!tagName) {
+        throw new Error(`Missing exported tag for ${entry.id}`);
+      }
+      if (loadSequence !== this.slotLoadSequence[slotName]) {
+        return;
+      }
+      this.slotReplacementState = {
+        ...this.slotReplacementState,
+        [slotName]: { status: 'ready', entry, tagName },
+      };
+    } catch (error) {
+      if (loadSequence !== this.slotLoadSequence[slotName]) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.slotReplacementState = {
+        ...this.slotReplacementState,
+        [slotName]: { status: 'failed', entry, error: message },
+      };
+    }
   }
 
   private handleFrameSwitch(event: CustomEvent<{ frame: FrameName }>) {
