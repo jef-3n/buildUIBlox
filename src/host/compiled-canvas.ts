@@ -26,6 +26,7 @@ import {
   isCompatibleCompiledArtifact,
 } from './compiled-contract';
 import type { DraftArtifact } from './draft-contract';
+import type { FramePan } from '../contracts/ui-state';
 
 export type { CompiledArtifact, CompiledFrame, CompiledNode } from './compiled-contract';
 export { COMPILED_SCHEMA_VERSION, isCompatibleCompiledArtifact } from './compiled-contract';
@@ -140,6 +141,9 @@ export class CompiledCanvas extends LitElement {
   @property({ type: Number })
   scale = 1;
 
+  @property({ attribute: false })
+  pan: FramePan = { x: 0, y: 0 };
+
   render() {
     if (!isCompatibleCompiledArtifact(this.artifact)) {
       return html`<div class="empty-state">Compiled artifact required for runtime rendering.</div>`;
@@ -164,10 +168,12 @@ export class CompiledCanvas extends LitElement {
       (hotspot) => !hotspot.frame || hotspot.frame === resolvedFrameName
     );
 
+    const transform = `translate(${this.pan.x}px, ${this.pan.y}px) scale(${this.scale})`;
+
     return html`
       <style>${this.artifact.css}</style>
       <div class="frame-wrapper">
-        <div class="frame-scale" style=${styleMap({ transform: `scale(${this.scale})` })}>
+        <div class="frame-scale" style=${styleMap({ transform })}>
           <section class="frame" data-frame=${resolvedFrameName} style=${styleMap(frameStyles)}>
             ${repeat(
               frame.order,

@@ -58,6 +58,8 @@ import {
 import { type HostState, createObservationPacket } from './observation';
 import {
   DEFAULT_UI_SCALE,
+  clampUiScale,
+  createFrameTransformState,
   createUiDrawersState,
   type DrawerName,
 } from '../contracts/ui-state';
@@ -98,6 +100,7 @@ export class NuwaHost extends LitElement {
     selectionPath: undefined,
     activeSurface: 'canvas',
     scale: DEFAULT_UI_SCALE,
+    frameTransforms: createFrameTransformState(DEFAULT_UI_SCALE),
     drawers: createUiDrawersState(),
     draftId: sampleDraft.metadata.draftId,
     compiledId: sampleCompiledArtifact.compiledId,
@@ -127,6 +130,7 @@ export class NuwaHost extends LitElement {
       activeFrame: 'desktop',
       activeSurface: 'canvas',
       scale: DEFAULT_UI_SCALE,
+      frameTransforms: createFrameTransformState(DEFAULT_UI_SCALE),
       drawers: createUiDrawersState(),
     },
     selection: { path: undefined },
@@ -269,6 +273,7 @@ export class NuwaHost extends LitElement {
 
   render() {
     const activeFrame = this.hostState.ui.activeFrame;
+    const frameTransform = this.hostState.ui.frameTransforms[activeFrame];
     return html`
       <div class="drawer top">
         ${this.renderSlotReplacement(
@@ -290,7 +295,8 @@ export class NuwaHost extends LitElement {
             .draft=${this.hostState.draft}
             .activeFrame=${activeFrame}
             .selectedPath=${this.hostState.selection.path}
-            .scale=${this.hostState.ui.scale}
+            .scale=${frameTransform.scale}
+            .pan=${frameTransform.pan}
             .ghostEditMode=${this.ghostEditMode}
             .ghostDrawMode=${this.ghostDrawMode}
           ></compiled-canvas>
@@ -778,6 +784,7 @@ export class NuwaHost extends LitElement {
       selectionPath: nextState.selection.path,
       activeSurface: nextState.ui.activeSurface,
       scale: nextState.ui.scale,
+      frameTransforms: nextState.ui.frameTransforms,
       drawers: nextState.ui.drawers,
     });
   }
@@ -1208,6 +1215,9 @@ const hostEventHandlers: HostEventHandlerMap = {
       return state;
     }
     const nextFrame = event.payload.frame;
+    const nextFrameTransform =
+      state.ui.frameTransforms[nextFrame] ??
+      createFrameTransformState(state.ui.scale)[nextFrame];
     const selectionCandidates = [
       state.selectionsByFrame[nextFrame],
       state.selection.path,
@@ -1217,7 +1227,12 @@ const hostEventHandlers: HostEventHandlerMap = {
     );
     return {
       ...state,
-      ui: { activeFrame: nextFrame, activeSurface: 'frames' },
+      ui: {
+        ...state.ui,
+        activeFrame: nextFrame,
+        activeSurface: 'frames',
+        scale: nextFrameTransform.scale,
+      },
       selection: { path: nextSelection },
       selectionsByFrame: {
         ...state.selectionsByFrame,
@@ -1245,13 +1260,20 @@ const hostEventHandlers: HostEventHandlerMap = {
     };
   },
   [UI_SET_SCALE]: (state, event) => {
-    const nextScale = Math.min(5, Math.max(1, event.payload.scale));
+    const nextScale = clampUiScale(event.payload.scale);
     if (state.ui.scale === nextScale) {
       return state;
     }
+    const nextFrameTransforms = {
+      ...state.ui.frameTransforms,
+      [state.ui.activeFrame]: {
+        ...state.ui.frameTransforms[state.ui.activeFrame],
+        scale: nextScale,
+      },
+    };
     return {
       ...state,
-      ui: { ...state.ui, scale: nextScale },
+      ui: { ...state.ui, scale: nextScale, frameTransforms: nextFrameTransforms },
     };
   },
   [UI_DRAWER_OPEN]: (state, event) => {
@@ -1311,11 +1333,13 @@ const hostEventHandlers: HostEventHandlerMap = {
   [UI_RESET_LAYOUT]: (state) => {
     const nextScale = DEFAULT_UI_SCALE;
     const nextDrawers = createUiDrawersState();
+    const nextFrameTransforms = createFrameTransformState(nextScale);
     return {
       ...state,
       ui: {
         ...state.ui,
         scale: nextScale,
+        frameTransforms: nextFrameTransforms,
         drawers: nextDrawers,
       },
     };
@@ -1363,10 +1387,25 @@ const hostEventHandlers: HostEventHandlerMap = {
   'session.sync': (state, event) => {
     const { session } = event.payload;
     const nextFrame = session.activeFrame ?? state.ui.activeFrame;
+    const baseFrameTransforms = session.frameTransforms ?? state.ui.frameTransforms;
+    const nextFrameTransforms =
+      session.frameTransforms ??
+      (session.scale
+        ? {
+            ...baseFrameTransforms,
+            [nextFrame]: {
+              ...baseFrameTransforms[nextFrame],
+              scale: clampUiScale(session.scale),
+            },
+          }
+        : baseFrameTransforms);
+    const nextFrameScale =
+      nextFrameTransforms[nextFrame]?.scale ?? state.ui.scale;
     const nextUi = {
       activeFrame: nextFrame,
       activeSurface: session.activeSurface ?? state.ui.activeSurface,
-      scale: session.scale ?? state.ui.scale,
+      scale: nextFrameScale,
+      frameTransforms: nextFrameTransforms,
       drawers: session.drawers ?? state.ui.drawers,
     };
     const nextDraftLock = session.draftLock ?? state.draftLock;

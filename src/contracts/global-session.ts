@@ -1,5 +1,6 @@
 import type { FrameName } from '../host/frame-types';
-import type { ActiveSurface, UiDrawersState } from './ui-state';
+import type { ActiveSurface, FrameTransformState, UiDrawersState } from './ui-state';
+import { isFrameTransformState } from './ui-state';
 import {
   hasNumber,
   hasOptionalBoolean,
@@ -20,6 +21,7 @@ export type GlobalPresenceState = {
   selectionPath?: string;
   activeSurface: ActiveSurface;
   scale: number;
+  frameTransforms?: FrameTransformState;
   drawers: UiDrawersState;
   lastSeenAt: string;
   isLocal: boolean;
@@ -34,6 +36,7 @@ export type GlobalSessionSnapshot = {
   selectionPath?: string;
   activeSurface: ActiveSurface;
   scale: number;
+  frameTransforms?: FrameTransformState;
   drawers: UiDrawersState;
   presence: Record<string, GlobalPresenceState>;
   draftId?: string;
@@ -53,6 +56,7 @@ export type GlobalSessionUpdate = {
   selectionPath?: string;
   activeSurface: ActiveSurface;
   scale: number;
+  frameTransforms?: FrameTransformState;
   drawers: UiDrawersState;
   draftId?: string;
   compiledId?: string;
@@ -144,6 +148,9 @@ const isGlobalSessionUpdate = (value: unknown): value is GlobalSessionUpdate => 
   if (!hasOptionalString(value.selectionPath)) return false;
   if (!isActiveSurface(value.activeSurface)) return false;
   if (!hasNumber(value.scale)) return false;
+  if (typeof value.frameTransforms !== 'undefined' && !isFrameTransformState(value.frameTransforms)) {
+    return false;
+  }
   if (!isUiDrawerState(value.drawers)) return false;
   if (!hasOptionalString(value.draftId)) return false;
   if (!hasOptionalString(value.compiledId)) return false;
@@ -165,6 +172,9 @@ const isGlobalPresenceState = (value: unknown): value is GlobalPresenceState => 
   if (!hasOptionalString(value.selectionPath)) return false;
   if (!isActiveSurface(value.activeSurface)) return false;
   if (!hasNumber(value.scale)) return false;
+  if (typeof value.frameTransforms !== 'undefined' && !isFrameTransformState(value.frameTransforms)) {
+    return false;
+  }
   if (!isUiDrawerState(value.drawers)) return false;
   if (!hasString(value.lastSeenAt)) return false;
   if (typeof value.isLocal !== 'boolean') return false;

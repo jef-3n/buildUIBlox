@@ -428,8 +428,8 @@ export class GhostLayer extends LitElement {
     const styles = getComputedStyle(this);
     const paddingLeft = parseFloat(styles.paddingLeft || '0');
     const paddingTop = parseFloat(styles.paddingTop || '0');
-    const x = (event.clientX - rect.left - paddingLeft) / this.scale;
-    const y = (event.clientY - rect.top - paddingTop) / this.scale;
+    const x = (event.clientX - rect.left) / this.scale - paddingLeft;
+    const y = (event.clientY - rect.top) / this.scale - paddingTop;
     return { x, y };
   }
 
