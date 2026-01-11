@@ -59,6 +59,7 @@ import {
 import {
   BUILDER_UI_REGISTRY_BOUNDARY,
   getBuilderUiManifest,
+  persistBuilderUiManifest,
   setBuilderUiManifest,
   type BuilderUiComponentEntry,
 } from '../system/components/builder-ui/manifest';
@@ -662,27 +663,31 @@ export class NuwaHost extends LitElement {
         const nextRegistry =
           envelope.payload.registry ??
           (manifest.activeRegistry === 'local' ? 'remote' : 'local');
-        setBuilderUiManifest(switchBuilderUiRegistry(manifest, nextRegistry));
+        const nextManifest = setBuilderUiManifest(
+          switchBuilderUiRegistry(manifest, nextRegistry)
+        );
+        persistBuilderUiManifest(nextManifest);
         void this.loadBuilderUiSlots();
         break;
       }
       case BUILDER_UI_BOOTSTRAP_PUBLISH: {
         const { version, tag, notes, publishedAt } = envelope.payload;
         const manifest = getBuilderUiManifest();
-        setBuilderUiManifest(
+        const nextManifest = setBuilderUiManifest(
           applyBuilderUiBootstrapFullClosure(manifest, version, {
             tag,
             notes,
             publishedAt: publishedAt ?? new Date().toISOString(),
           })
         );
+        persistBuilderUiManifest(nextManifest);
         void this.loadBuilderUiSlots();
         break;
       }
       case BUILDER_UI_BOOTSTRAP_ROLLBACK: {
         const { version, reason, rolledBackAt } = envelope.payload;
         const manifest = getBuilderUiManifest();
-        setBuilderUiManifest(
+        const nextManifest = setBuilderUiManifest(
           rollbackBuilderUiBootstrapVersion(
             manifest,
             version,
@@ -690,14 +695,16 @@ export class NuwaHost extends LitElement {
             rolledBackAt ?? new Date().toISOString()
           )
         );
+        persistBuilderUiManifest(nextManifest);
         void this.loadBuilderUiSlots();
         break;
       }
       case BUILDER_UI_BOOTSTRAP_VERSION_PIN: {
         const manifest = getBuilderUiManifest();
-        setBuilderUiManifest(
+        const nextManifest = setBuilderUiManifest(
           pinBuilderUiBootstrapVersion(manifest, envelope.payload.versionPin)
         );
+        persistBuilderUiManifest(nextManifest);
         void this.loadBuilderUiSlots();
         break;
       }

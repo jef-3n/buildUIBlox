@@ -1,5 +1,6 @@
 export const BUILDER_UI_REGISTRY_BOUNDARY = '/system/components/builder-ui/';
 export const BUILDER_UI_MANIFEST_VERSION = 'builder-ui-manifest/v1' as const;
+export const BUILDER_UI_MANIFEST_STORAGE_KEY = 'builder-ui-manifest';
 
 export type BuilderUiRegistryKey = 'local' | 'remote';
 
@@ -79,6 +80,14 @@ const isRegistryKey = (value: string): value is BuilderUiRegistryKey =>
 const hasBoundaryPrefix = (boundary: string, entryId: string) =>
   entryId.startsWith(boundary);
 
+const resolveStorage = (): Storage | undefined => {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+};
+
 export const validateBuilderUiManifest = (manifest: BuilderUiManifest): BuilderUiManifestValidation => {
   const errors: string[] = [];
 
@@ -118,6 +127,59 @@ export const validateBuilderUiManifest = (manifest: BuilderUiManifest): BuilderU
   });
 
   return { ok: errors.length === 0, errors };
+};
+
+const parseBuilderUiManifest = (value: string): BuilderUiManifest | undefined => {
+  try {
+    const parsed = JSON.parse(value) as BuilderUiManifest;
+    if (parsed.version !== BUILDER_UI_MANIFEST_VERSION) {
+      return undefined;
+    }
+    const validation = validateBuilderUiManifest(parsed);
+    if (!validation.ok) {
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
+};
+
+export const loadBuilderUiManifest = (fallback: BuilderUiManifest): BuilderUiManifest => {
+  const storage = resolveStorage();
+  if (!storage) {
+    return fallback;
+  }
+  const existing = storage.getItem(BUILDER_UI_MANIFEST_STORAGE_KEY);
+  if (!existing) {
+    return fallback;
+  }
+  const parsed = parseBuilderUiManifest(existing);
+  if (parsed) {
+    return parsed;
+  }
+  try {
+    storage.removeItem(BUILDER_UI_MANIFEST_STORAGE_KEY);
+  } catch {
+    // Best-effort cleanup for invalid persisted data.
+  }
+  return fallback;
+};
+
+export const persistBuilderUiManifest = (manifest: BuilderUiManifest) => {
+  const storage = resolveStorage();
+  if (!storage) {
+    return;
+  }
+  const validation = validateBuilderUiManifest(manifest);
+  if (!validation.ok) {
+    return;
+  }
+  try {
+    storage.setItem(BUILDER_UI_MANIFEST_STORAGE_KEY, JSON.stringify(manifest));
+  } catch {
+    // Best-effort persistence for offline/local use.
+  }
 };
 
 export const createBuilderUiManifest = (
@@ -163,7 +225,7 @@ export const createBuilderUiManifest = (
   };
 };
 
-let builderUiManifest = createBuilderUiManifest({
+const baseBuilderUiManifest = createBuilderUiManifest({
   registries: {
     local: {
       key: 'local',
@@ -198,6 +260,8 @@ let builderUiManifest = createBuilderUiManifest({
     },
   },
 });
+
+let builderUiManifest = loadBuilderUiManifest(baseBuilderUiManifest);
 
 export const getBuilderUiManifest = () => builderUiManifest;
 
