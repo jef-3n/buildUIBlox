@@ -7,16 +7,19 @@ import { sampleCompiledArtifact } from './sample-compiled';
 import type { FrameName } from './frame-types';
 import { elementPathPattern, getElementIdFromPath } from './paths';
 import { normalizeFrameScopedPath, setPathValue } from './path-edits';
-import type { CompiledArtifact } from './compiled-canvas';
-import type { ObservationCategory, ObservationPacket } from './telemetry';
+import type { ObservationPacket } from './telemetry';
 import './telemetry-sniffer';
 import {
   SHARED_SESSION_UPDATE_EVENT,
   type ActiveSurface,
   type SharedSessionEventDetail,
-  type SharedSessionSnapshot,
   createSharedSession,
 } from './shared-session';
+import {
+  type HostEvent,
+  type HostState,
+  createObservationPacket,
+} from './observation';
 import {
   BUILDER_UI_REGISTRY_BOUNDARY,
   builderUiManifest,
@@ -24,21 +27,6 @@ import {
 } from '../system/components/builder-ui/manifest';
 import { loadBuilderUiRegistry } from '../system/components/builder-ui/registry';
 
-type UiState = {
-  activeFrame: FrameName;
-  activeSurface: ActiveSurface;
-};
-
-type SelectionState = {
-  path?: string;
-};
-
-type HostState = {
-  ui: UiState;
-  selection: SelectionState;
-  selectionsByFrame: Record<FrameName, string | undefined>;
-  artifact: CompiledArtifact;
-};
 
 type HostSlotName = 'top' | 'left' | 'right' | 'bottom';
 
@@ -49,14 +37,6 @@ type HostSlotReplacementState = {
   error?: string;
 };
 
-type HostEvent =
-  | { type: 'UI_SET_FRAME'; payload: { frame: FrameName } }
-  | { type: 'SELECTION_SET'; payload: { path: string } }
-  | {
-      type: 'ARTIFACT_PATH_EDIT';
-      payload: { path: string; value: unknown; frame?: FrameName };
-    }
-  | { type: 'SESSION_SYNC'; payload: { session: SharedSessionSnapshot } };
 
 @customElement('nuwa-host')
 export class NuwaHost extends LitElement {
@@ -473,16 +453,12 @@ export class NuwaHost extends LitElement {
   }
 
   private emitObservationPacket(event: HostEvent, nextState: HostState, prevState: HostState) {
-    const category = this.resolveObservationCategory(event);
-    const packet: ObservationPacket = {
-      id: `${Date.now()}-${this.observationSequence + 1}`,
-      sequence: ++this.observationSequence,
-      emittedAt: new Date().toISOString(),
-      source: 'nuwa-host',
-      category,
-      event: event.type,
-      payload: this.buildObservationPayload(event, nextState, prevState),
-    };
+    const packet = createObservationPacket(
+      event,
+      nextState,
+      prevState,
+      ++this.observationSequence
+    );
     this.dispatchEvent(
       new CustomEvent<ObservationPacket>('OBSERVATION_PACKET', {
         detail: packet,
@@ -490,51 +466,6 @@ export class NuwaHost extends LitElement {
         composed: true,
       })
     );
-  }
-
-  private resolveObservationCategory(event: HostEvent): ObservationCategory {
-    switch (event.type) {
-      case 'SELECTION_SET':
-        return 'selection';
-      case 'ARTIFACT_PATH_EDIT':
-        return 'artifact';
-      default:
-        return 'pipeline';
-    }
-  }
-
-  private buildObservationPayload(event: HostEvent, nextState: HostState, prevState: HostState) {
-    switch (event.type) {
-      case 'UI_SET_FRAME':
-        return {
-          frame: nextState.ui.activeFrame,
-          previousFrame: prevState.ui.activeFrame,
-          activeSurface: nextState.ui.activeSurface,
-        };
-      case 'SELECTION_SET':
-        return {
-          path: nextState.selection.path,
-          frame: nextState.ui.activeFrame,
-          activeSurface: nextState.ui.activeSurface,
-        };
-      case 'ARTIFACT_PATH_EDIT':
-        return {
-          path: event.payload.path,
-          frame: event.payload.frame ?? nextState.ui.activeFrame,
-          compiledId: nextState.artifact.compiledId,
-          draftId: nextState.artifact.draftId,
-          activeSurface: nextState.ui.activeSurface,
-        };
-      case 'SESSION_SYNC':
-        return {
-          frame: nextState.ui.activeFrame,
-          path: nextState.selection.path,
-          activeSurface: nextState.ui.activeSurface,
-          sessionId: event.payload.session.sessionId,
-        };
-      default:
-        return {};
-    }
   }
 
   private syncSharedSession(event: HostEvent, nextState: HostState) {

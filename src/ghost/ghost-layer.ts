@@ -3,13 +3,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { buildElementPath } from '../host/paths';
 import type { FrameName } from '../host/frame-types';
-
-export type GhostRect = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-};
+import { buildHotspotStyle, type GhostRect } from './geometry';
 
 export type GhostEmitter =
   | string
@@ -26,6 +20,7 @@ export type GhostHotspot = {
   payload?: unknown;
   path?: string;
 };
+
 
 export type GhostSelectDetail = {
   path: string;
@@ -91,7 +86,7 @@ export class GhostLayer extends LitElement {
         this.ghostMap,
         (hotspot) => hotspot.id,
         (hotspot) => {
-          const style = `left:${hotspot.rect.x}px;top:${hotspot.rect.y}px;width:${hotspot.rect.w}px;height:${hotspot.rect.h}px;`;
+          const style = buildHotspotStyle(hotspot.rect);
 
           return html`
             <div

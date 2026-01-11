@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/version.js && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node scripts/build-tests.js && node --experimental-specifier-resolution=node --test tests"
   },
   "dependencies": {
     "lit": "^3.1.0"
