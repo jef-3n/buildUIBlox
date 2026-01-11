@@ -36,6 +36,12 @@ export type GhostTriggerDetail = {
   hotspotId: string;
 };
 
+export type GhostEditDetail = {
+  path: string;
+  rect?: DOMRect;
+  hotspotId: string;
+};
+
 @customElement('ghost-layer')
 export class GhostLayer extends LitElement {
   static styles = css`
@@ -64,6 +70,11 @@ export class GhostLayer extends LitElement {
     :host([interaction-authority='false']) .hotspot {
       cursor: default;
     }
+
+    :host([edit-mode='true']) .hotspot {
+      border-color: rgba(249, 115, 22, 0.8);
+      background: rgba(249, 115, 22, 0.12);
+    }
   `;
 
   @property({ attribute: false })
@@ -71,6 +82,9 @@ export class GhostLayer extends LitElement {
 
   @property({ type: Boolean, attribute: 'interaction-authority', reflect: true })
   interactionAuthority = true;
+
+  @property({ type: Boolean, attribute: 'edit-mode', reflect: true })
+  editMode = false;
 
   private hotspotById = new Map<string, GhostHotspot>();
 
@@ -135,6 +149,22 @@ export class GhostLayer extends LitElement {
         composed: true,
       })
     );
+
+    if (this.editMode || event.altKey) {
+      const editDetail: GhostEditDetail = {
+        path,
+        rect,
+        hotspotId: hotspot.id,
+      };
+      this.dispatchEvent(
+        new CustomEvent<GhostEditDetail>('GHOST_EDIT_ELEMENT', {
+          detail: editDetail,
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
 
     if (!hotspot.emitter) {
       return;

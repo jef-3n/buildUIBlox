@@ -16,9 +16,12 @@ import {
 export const HOST_EVENT_ENVELOPE_VERSION = 'host-event.v1' as const;
 export const HOST_EVENT_ENVELOPE_EVENT = 'HOST_EVENT_ENVELOPE';
 export const STYLER_UPDATE_PROP = 'styler.updateProp' as const;
+export const BINDING_UPDATE_PROP = 'binding.updateProp' as const;
 export const UI_SET_SCALE = 'ui.setScale' as const;
 export const UI_DRAWER_OPEN = 'ui.drawer.open' as const;
 export const UI_DRAWER_CLOSE = 'ui.drawer.close' as const;
+export const WAREHOUSE_ADD_INTENT = 'warehouse.addIntent' as const;
+export const WAREHOUSE_MOVE_INTENT = 'warehouse.moveIntent' as const;
 
 export const COMPATIBLE_HOST_EVENT_ENVELOPE_VERSIONS = new Set<string>([
   HOST_EVENT_ENVELOPE_VERSION,
@@ -32,10 +35,13 @@ export type HostEventType =
   | typeof UI_DRAWER_OPEN
   | typeof UI_DRAWER_CLOSE
   | typeof STYLER_UPDATE_PROP
+  | typeof BINDING_UPDATE_PROP
   | 'session.sync'
   | 'session.state'
   | 'pipeline.state'
-  | 'ghost.trigger';
+  | 'ghost.trigger'
+  | typeof WAREHOUSE_ADD_INTENT
+  | typeof WAREHOUSE_MOVE_INTENT;
 
 export type HostEventPayloadMap = {
   'ui.setFrame': { frame: FrameName };
@@ -51,6 +57,7 @@ export type HostEventPayloadMap = {
   [UI_DRAWER_OPEN]: { drawer: 'top' | 'left' | 'right' | 'bottom'; size?: number };
   [UI_DRAWER_CLOSE]: { drawer: 'top' | 'left' | 'right' | 'bottom' };
   [STYLER_UPDATE_PROP]: { path: string; value: unknown; frame?: FrameName };
+  [BINDING_UPDATE_PROP]: { path: string; value: unknown };
   'session.sync': { session: GlobalSessionSnapshot };
   'session.state': { session: GlobalSessionSnapshot; origin: 'local' | 'remote' };
   'pipeline.state': { pipeline: GlobalSessionPipelineState | null };
@@ -61,6 +68,19 @@ export type HostEventPayloadMap = {
     rect?: DOMRect;
     hotspotId: string;
     source?: string;
+  };
+  [WAREHOUSE_ADD_INTENT]: {
+    itemId: string;
+    label: string;
+    kind: 'primitive' | 'template';
+    target?: string;
+  };
+  [WAREHOUSE_MOVE_INTENT]: {
+    itemId: string;
+    label: string;
+    kind: 'primitive' | 'template';
+    from?: string;
+    to?: string;
   };
 };
 
@@ -122,6 +142,8 @@ const hasHostEventPayload = (
         hasString(payload.path) &&
         (typeof payload.frame === 'undefined' || isFrameName(payload.frame))
       );
+    case BINDING_UPDATE_PROP:
+      return hasString(payload.path);
     case 'session.sync':
       return isCompatibleGlobalSessionSnapshot(payload.session);
     case 'session.state':
@@ -136,6 +158,18 @@ const hasHostEventPayload = (
       );
     case 'ghost.trigger':
       return hasString(payload.type) && hasString(payload.path) && hasString(payload.hotspotId);
+    case WAREHOUSE_ADD_INTENT:
+      return (
+        hasString(payload.itemId) &&
+        hasString(payload.label) &&
+        (payload.kind === 'primitive' || payload.kind === 'template')
+      );
+    case WAREHOUSE_MOVE_INTENT:
+      return (
+        hasString(payload.itemId) &&
+        hasString(payload.label) &&
+        (payload.kind === 'primitive' || payload.kind === 'template')
+      );
     default:
       return false;
   }

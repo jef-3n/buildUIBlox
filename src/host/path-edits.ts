@@ -34,6 +34,15 @@ const isDraftStylerPath = (segments: string[]) => {
   );
 };
 
+const isDraftBindingPath = (segments: string[]) => {
+  return (
+    segments[0] === 'elements' &&
+    segments.length >= 4 &&
+    segments[2] === 'props' &&
+    segments[3] === 'bindings'
+  );
+};
+
 export const normalizeDraftStylerPath = (path: string, activeFrame: FrameName) => {
   const segments = parsePathSegments(path);
   if (!segments.length) return null;
@@ -56,6 +65,13 @@ export const normalizeDraftStylerPath = (path: string, activeFrame: FrameName) =
     }
   }
 
+  return segments.join('.');
+};
+
+export const normalizeDraftBindingPath = (path: string) => {
+  const segments = parsePathSegments(path);
+  if (!segments.length) return null;
+  if (!isDraftBindingPath(segments)) return null;
   return segments.join('.');
 };
 

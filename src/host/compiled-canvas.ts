@@ -5,10 +5,16 @@ import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import '../ghost/ghost-layer';
-import type { GhostHotspot, GhostSelectDetail, GhostTriggerDetail } from '../ghost/ghost-layer';
+import type {
+  GhostHotspot,
+  GhostSelectDetail,
+  GhostTriggerDetail,
+  GhostEditDetail,
+} from '../ghost/ghost-layer';
 import {
   HOST_EVENT_ENVELOPE_EVENT,
   createHostEventEnvelope,
+  STYLER_UPDATE_PROP,
 } from '../contracts/event-envelope';
 import { getElementIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
@@ -116,6 +122,9 @@ export class CompiledCanvas extends LitElement {
   @property({ type: Boolean, attribute: 'ghost-authority' })
   ghostAuthority = true;
 
+  @property({ type: Boolean, attribute: 'ghost-edit-mode' })
+  ghostEditMode = false;
+
   @property({ type: String, attribute: false })
   selectedPath?: string;
 
@@ -161,8 +170,10 @@ export class CompiledCanvas extends LitElement {
           <ghost-layer
             .ghostMap=${ghostMap}
             .interactionAuthority=${this.ghostAuthority}
+            .editMode=${this.ghostEditMode}
             @GHOST_SELECT_ELEMENT=${this.handleGhostSelection}
             @GHOST_HOTSPOT_TRIGGER=${this.handleGhostTrigger}
+            @GHOST_EDIT_ELEMENT=${this.handleGhostEdit}
           ></ghost-layer>
         </div>
       </div>
@@ -312,7 +323,7 @@ export class CompiledCanvas extends LitElement {
     if (!this.ghostAuthority) {
       return;
     }
-    const { path, rect, hotspotId } = event.detail;
+    const { path, rect } = event.detail;
     if (path) {
       const envelope = createHostEventEnvelope(
         'selection.set',
@@ -347,5 +358,38 @@ export class CompiledCanvas extends LitElement {
         composed: true,
       })
     );
+  }
+
+  private handleGhostEdit(event: CustomEvent<GhostEditDetail>) {
+    event.stopPropagation();
+    if (!this.ghostAuthority) {
+      return;
+    }
+    const { path, rect } = event.detail;
+    const nodeId = getElementIdFromPath(path);
+    if (!nodeId || !rect) {
+      return;
+    }
+    const width = `${Math.round(rect.width)}px`;
+    const height = `${Math.round(rect.height)}px`;
+    const widthEnvelope = createHostEventEnvelope(
+      STYLER_UPDATE_PROP,
+      { path: `elements.${nodeId}.props.styler.width`, value: width },
+      'ghost-layer'
+    );
+    const heightEnvelope = createHostEventEnvelope(
+      STYLER_UPDATE_PROP,
+      { path: `elements.${nodeId}.props.styler.height`, value: height },
+      'ghost-layer'
+    );
+    [widthEnvelope, heightEnvelope].forEach((envelope) => {
+      this.dispatchEvent(
+        new CustomEvent(HOST_EVENT_ENVELOPE_EVENT, {
+          detail: envelope,
+          bubbles: true,
+          composed: true,
+        })
+      );
+    });
   }
 }

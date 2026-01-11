@@ -3,12 +3,15 @@ import type { CompiledArtifact } from './compiled-canvas';
 import type { ObservationCategory, ObservationPacket } from './telemetry';
 import type { ActiveSelection } from '../contracts/active-selection';
 import {
+  BINDING_UPDATE_PROP,
   STYLER_UPDATE_PROP,
   UI_DRAWER_CLOSE,
   UI_DRAWER_OPEN,
   UI_SET_SCALE,
   type HostEventEnvelope,
   type HostEventType,
+  WAREHOUSE_ADD_INTENT,
+  WAREHOUSE_MOVE_INTENT,
 } from '../contracts/event-envelope';
 import type { DraftArtifact } from './draft-contract';
 import type { UiState } from '../contracts/ui-state';
@@ -29,6 +32,7 @@ export const resolveObservationCategory = (
     case 'selection.set':
       return 'selection';
     case STYLER_UPDATE_PROP:
+    case BINDING_UPDATE_PROP:
       return 'draft';
     case UI_SET_SCALE:
     case UI_DRAWER_OPEN:
@@ -36,6 +40,8 @@ export const resolveObservationCategory = (
     case 'pipeline.state':
     case 'session.state':
     case 'ui.surface':
+    case WAREHOUSE_ADD_INTENT:
+    case WAREHOUSE_MOVE_INTENT:
     default:
       return 'pipeline';
   }
@@ -63,6 +69,13 @@ export const buildObservationPayload = (
       return {
         path: event.payload.path,
         frame: event.payload.frame ?? nextState.ui.activeFrame,
+        compiledId: nextState.artifact.compiledId,
+        draftId: nextState.draft.draftId,
+        activeSurface: nextState.ui.activeSurface,
+      };
+    case BINDING_UPDATE_PROP:
+      return {
+        path: event.payload.path,
         compiledId: nextState.artifact.compiledId,
         draftId: nextState.draft.draftId,
         activeSurface: nextState.ui.activeSurface,
@@ -103,6 +116,19 @@ export const buildObservationPayload = (
     case 'ui.surface':
       return {
         surface: event.payload.surface,
+      };
+    case WAREHOUSE_ADD_INTENT:
+      return {
+        itemId: event.payload.itemId,
+        kind: event.payload.kind,
+        target: event.payload.target ?? 'canvas',
+      };
+    case WAREHOUSE_MOVE_INTENT:
+      return {
+        itemId: event.payload.itemId,
+        kind: event.payload.kind,
+        from: event.payload.from ?? 'warehouse',
+        to: event.payload.to ?? 'canvas',
       };
     default:
       return {};
