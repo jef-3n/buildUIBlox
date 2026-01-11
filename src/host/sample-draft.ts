@@ -6,4 +6,5 @@ export const sampleDraft: DraftArtifact = {
   appId: sampleCompiledArtifact.appId,
   updatedAt: new Date().toISOString(),
   elements: {},
+  ghostMap: sampleCompiledArtifact.runtime.ghostMap ?? [],
 };

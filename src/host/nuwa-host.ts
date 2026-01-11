@@ -18,6 +18,7 @@ import type { ObservationPacket } from './telemetry';
 import './telemetry-sniffer';
 import {
   BINDING_UPDATE_PROP,
+  GHOST_MAP_EDIT,
   HOST_EVENT_ENVELOPE_EVENT,
   PIPELINE_ABORT,
   PIPELINE_PUBLISH,
@@ -72,6 +73,8 @@ import './warehouse-drawer';
 import { compileDraftArtifact } from './compiler';
 import { DraftArtifactStore } from './draft-store';
 import { CompiledArtifactStore } from './compiled-store';
+import type { GhostHotspot } from '../ghost/ghost-layer';
+import type { GhostRect } from '../ghost/geometry';
 
 
 type HostSlotReplacementStateWithEntry = HostSlotReplacementState & {
@@ -742,10 +745,15 @@ export class NuwaHost extends LitElement {
     prevState: HostState
   ) {
     if (
-      (event.type === STYLER_UPDATE_PROP || event.type === BINDING_UPDATE_PROP) &&
+      (event.type === STYLER_UPDATE_PROP ||
+        event.type === BINDING_UPDATE_PROP ||
+        event.type === GHOST_MAP_EDIT) &&
       nextState.draft !== prevState.draft
     ) {
       this.draftStore.write(nextState.draft, 'local');
+    }
+    if (event.type === GHOST_MAP_EDIT && nextState.artifact !== prevState.artifact) {
+      this.compiledStore.write(nextState.artifact, 'local');
     }
   }
 
@@ -845,11 +853,37 @@ type HostEventHandlerMap = {
 const draftLockGuardedEvents = new Set<HostEventType>([
   STYLER_UPDATE_PROP,
   BINDING_UPDATE_PROP,
+  GHOST_MAP_EDIT,
   'ghost.trigger',
 ]);
 
 const isDraftLockGuardedEvent = (eventType: HostEventType) =>
   draftLockGuardedEvents.has(eventType);
+
+const toGhostRect = (rect: DOMRect): GhostRect => ({
+  x: rect.x,
+  y: rect.y,
+  w: rect.width,
+  h: rect.height,
+});
+
+const upsertGhostMapHotspot = (
+  ghostMap: GhostHotspot[],
+  payload: HostEventPayloadMap[typeof GHOST_MAP_EDIT]
+): GhostHotspot[] => {
+  const existing = ghostMap.find((hotspot) => hotspot.id === payload.hotspotId);
+  const rect = toGhostRect(payload.rect);
+  const nextHotspot: GhostHotspot = {
+    ...(existing ?? { id: payload.hotspotId, rect }),
+    id: payload.hotspotId,
+    rect,
+    path: payload.path,
+    frame: payload.frame,
+  };
+  const nextGhostMap = ghostMap.filter((hotspot) => hotspot.id !== payload.hotspotId);
+  nextGhostMap.push(nextHotspot);
+  return nextGhostMap;
+};
 
 const hostEventHandlers: HostEventHandlerMap = {
   // Active surface rules:
@@ -1042,6 +1076,24 @@ const hostEventHandlers: HostEventHandlerMap = {
   [PIPELINE_TRIGGER]: (state) => state,
   [PIPELINE_ABORT]: (state) => state,
   [PIPELINE_PUBLISH]: (state) => state,
+  [GHOST_MAP_EDIT]: (state, event) => {
+    const sourceGhostMap =
+      state.draft.ghostMap ?? state.artifact.runtime.ghostMap ?? [];
+    const nextGhostMap = upsertGhostMapHotspot(sourceGhostMap, event.payload);
+    const nextDraft = {
+      ...state.draft,
+      ghostMap: nextGhostMap,
+    };
+    const nextArtifact = compileDraftArtifact(nextDraft, {
+      compiledId: state.artifact.compiledId,
+      baseArtifact: state.artifact,
+    });
+    return {
+      ...state,
+      draft: nextDraft,
+      artifact: nextArtifact,
+    };
+  },
   'ghost.trigger': (state) => state,
   [WAREHOUSE_ADD_INTENT]: (state) => state,
   [WAREHOUSE_MOVE_INTENT]: (state) => state,

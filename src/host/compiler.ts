@@ -75,6 +75,7 @@ const buildRuntimeFromDraft = (draft: DraftArtifact) => {
         mobile: frame,
       } satisfies Partial<Record<FrameName, CompiledFrame>>,
     },
+    ghostMap: draft.ghostMap,
   };
 };
 
@@ -89,6 +90,7 @@ export const compileDraftArtifact = (
     Object.entries(runtime.nodes).map(([id, node]) => [id, cloneNode(node)])
   );
   applyDraftStyling(draft, nextNodes);
+  const ghostMap = draft.ghostMap ?? runtime.ghostMap;
 
   return {
     schemaVersion: COMPILED_SCHEMA_VERSION,
@@ -100,6 +102,7 @@ export const compileDraftArtifact = (
     runtime: {
       ...runtime,
       nodes: nextNodes,
+      ghostMap,
     },
     integrity: {
       sourceHash: `${draft.draftId}:${draft.updatedAt}`,
