@@ -6,6 +6,8 @@ import './inspector-panel';
 import { sampleCompiledArtifact } from './sample-compiled';
 import { sampleDraft } from './sample-draft';
 import type { FrameName } from './frame-types';
+import type { DraftArtifact } from './draft-contract';
+import type { CompiledArtifact } from './compiled-contract';
 import { elementPathPattern, getElementIdFromPath } from './paths';
 import {
   normalizeDraftBindingPath,
@@ -17,6 +19,9 @@ import './telemetry-sniffer';
 import {
   BINDING_UPDATE_PROP,
   HOST_EVENT_ENVELOPE_EVENT,
+  PIPELINE_ABORT,
+  PIPELINE_PUBLISH,
+  PIPELINE_TRIGGER,
   STYLER_UPDATE_PROP,
   createHostEventEnvelope,
   isCompatibleHostEventEnvelope,
@@ -64,6 +69,9 @@ import {
   switchBuilderUiRegistry,
 } from '../system/components/builder-ui/registry';
 import './warehouse-drawer';
+import { compileDraftArtifact } from './compiler';
+import { DraftArtifactStore } from './draft-store';
+import { CompiledArtifactStore } from './compiled-store';
 
 
 type HostSlotReplacementStateWithEntry = HostSlotReplacementState & {
@@ -85,6 +93,16 @@ export class NuwaHost extends LitElement {
     draftId: sampleCompiledArtifact.draftId,
     compiledId: sampleCompiledArtifact.compiledId,
   });
+  private draftStore = new DraftArtifactStore(
+    sampleDraft.appId,
+    sampleDraft
+  );
+  private compiledStore = new CompiledArtifactStore(
+    sampleCompiledArtifact.appId,
+    sampleCompiledArtifact
+  );
+  private draftStoreUnsubscribe?: () => void;
+  private compiledStoreUnsubscribe?: () => void;
   private slotLoadSequence: Record<HostSlotName, number> = {
     top: 0,
     left: 0,
@@ -203,6 +221,7 @@ export class NuwaHost extends LitElement {
       this.handleGhostEditToggle as EventListener
     );
     this.sharedSession.connect();
+    this.connectArtifactStores();
     this.loadBuilderUiSlots();
     this.applyUiCssVars();
   }
@@ -221,6 +240,7 @@ export class NuwaHost extends LitElement {
       this.handleGhostEditToggle as EventListener
     );
     this.sharedSession.disconnect();
+    this.disconnectArtifactStores();
     super.disconnectedCallback();
   }
 
@@ -569,6 +589,9 @@ export class NuwaHost extends LitElement {
 
   private applyHostEventEnvelope(envelope: HostEventEnvelope) {
     this.applyBuilderUiBootstrapEvent(envelope);
+    if (this.applyPipelineEvent(envelope)) {
+      return;
+    }
     if (this.hostState.draftLock.locked && isDraftLockGuardedEvent(envelope.type)) {
       return;
     }
@@ -578,12 +601,55 @@ export class NuwaHost extends LitElement {
     }
     const prevState = this.hostState;
     const nextState = handler(this.hostState, envelope as never);
-    if (nextState === this.hostState) {
+    this.commitHostState(envelope, nextState, prevState);
+    this.persistArtifactsForEvent(envelope, nextState, prevState);
+  }
+
+  private commitHostState(
+    envelope: HostEventEnvelope,
+    nextState: HostState,
+    prevState: HostState
+  ) {
+    if (nextState === prevState) {
       return;
     }
     this.hostState = nextState;
     this.emitObservationPacket(envelope, nextState, prevState);
     this.syncSharedSession(envelope, nextState);
+  }
+
+  private applyPipelineEvent(envelope: HostEventEnvelope) {
+    switch (envelope.type) {
+      case PIPELINE_TRIGGER: {
+        this.sharedSession.triggerPipeline(envelope.payload.draftId);
+        return true;
+      }
+      case PIPELINE_ABORT: {
+        this.sharedSession.abortPipeline(envelope.payload.reason);
+        return true;
+      }
+      case PIPELINE_PUBLISH: {
+        const draftId = envelope.payload.draftId ?? this.hostState.draft.draftId;
+        const draft =
+          this.hostState.draft.draftId === draftId
+            ? this.hostState.draft
+            : this.draftStore.read();
+        const compiled = compileDraftArtifact(draft, {
+          compiledId: envelope.payload.compiledId,
+          baseArtifact: this.hostState.artifact,
+        });
+        this.compiledStore.write(compiled, 'local');
+        this.sharedSession.publishPipeline(compiled.compiledId);
+        const nextState = {
+          ...this.hostState,
+          artifact: compiled,
+        };
+        this.commitHostState(envelope, nextState, this.hostState);
+        return true;
+      }
+      default:
+        return false;
+    }
   }
 
   private applyBuilderUiBootstrapEvent(envelope: HostEventEnvelope) {
@@ -669,6 +735,107 @@ export class NuwaHost extends LitElement {
       drawers: nextState.ui.drawers,
     });
   }
+
+  private persistArtifactsForEvent(
+    event: HostEventEnvelope,
+    nextState: HostState,
+    prevState: HostState
+  ) {
+    if (
+      (event.type === STYLER_UPDATE_PROP || event.type === BINDING_UPDATE_PROP) &&
+      nextState.draft !== prevState.draft
+    ) {
+      this.draftStore.write(nextState.draft, 'local');
+    }
+  }
+
+  private connectArtifactStores() {
+    this.draftStore.connect();
+    this.compiledStore.connect();
+    this.hydrateArtifactsFromStorage();
+    this.draftStoreUnsubscribe = this.draftStore.subscribe(
+      this.handleDraftStoreUpdate
+    );
+    this.compiledStoreUnsubscribe = this.compiledStore.subscribe(
+      this.handleCompiledStoreUpdate
+    );
+  }
+
+  private disconnectArtifactStores() {
+    this.draftStoreUnsubscribe?.();
+    this.compiledStoreUnsubscribe?.();
+    this.draftStoreUnsubscribe = undefined;
+    this.compiledStoreUnsubscribe = undefined;
+    this.draftStore.disconnect();
+    this.compiledStore.disconnect();
+  }
+
+  private hydrateArtifactsFromStorage() {
+    const draftSnapshot = this.draftStore.read();
+    const compiledSnapshot = this.compiledStore.read();
+    const nextDraft = draftSnapshot ?? this.hostState.draft;
+    const nextArtifact = compiledSnapshot ?? this.hostState.artifact;
+    const shouldUpdate =
+      nextDraft !== this.hostState.draft || nextArtifact !== this.hostState.artifact;
+    if (shouldUpdate) {
+      this.hostState = {
+        ...this.hostState,
+        draft: nextDraft,
+        artifact: nextArtifact,
+      };
+    }
+    if (
+      nextDraft.draftId !== this.sharedSession.state.draftId ||
+      nextArtifact.compiledId !== this.sharedSession.state.compiledId
+    ) {
+      this.sharedSession.update({
+        draftId: nextDraft.draftId,
+        compiledId: nextArtifact.compiledId,
+        compiled: {
+          draftId: nextArtifact.draftId,
+          compiledId: nextArtifact.compiledId,
+        },
+      });
+    }
+  }
+
+  private handleDraftStoreUpdate = (
+    snapshot: DraftArtifact,
+    origin: 'local' | 'remote'
+  ) => {
+    if (origin !== 'remote') {
+      return;
+    }
+    this.hostState = {
+      ...this.hostState,
+      draft: snapshot,
+    };
+    if (snapshot.draftId !== this.sharedSession.state.draftId) {
+      this.sharedSession.update({ draftId: snapshot.draftId });
+    }
+  };
+
+  private handleCompiledStoreUpdate = (
+    snapshot: CompiledArtifact,
+    origin: 'local' | 'remote'
+  ) => {
+    if (origin !== 'remote') {
+      return;
+    }
+    this.hostState = {
+      ...this.hostState,
+      artifact: snapshot,
+    };
+    if (snapshot.compiledId !== this.sharedSession.state.compiledId) {
+      this.sharedSession.update({
+        compiledId: snapshot.compiledId,
+        compiled: {
+          draftId: snapshot.draftId,
+          compiledId: snapshot.compiledId,
+        },
+      });
+    }
+  };
 }
 
 type HostEventHandlerMap = {
@@ -872,6 +1039,9 @@ const hostEventHandlers: HostEventHandlerMap = {
     };
   },
   'pipeline.state': (state) => state,
+  [PIPELINE_TRIGGER]: (state) => state,
+  [PIPELINE_ABORT]: (state) => state,
+  [PIPELINE_PUBLISH]: (state) => state,
   'ghost.trigger': (state) => state,
   [WAREHOUSE_ADD_INTENT]: (state) => state,
   [WAREHOUSE_MOVE_INTENT]: (state) => state,
