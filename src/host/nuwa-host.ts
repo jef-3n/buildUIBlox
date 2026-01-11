@@ -1442,6 +1442,7 @@ const hostEventHandlers: HostEventHandlerMap = {
     const nextArtifact = compileDraftArtifact(nextDraft, {
       compiledId: state.artifact.compiledId,
       baseArtifact: state.artifact,
+      tokenConfig: this.sharedSession.state.tokens,
     });
     return {
       ...state,
@@ -1463,6 +1464,7 @@ const hostEventHandlers: HostEventHandlerMap = {
     const nextArtifact = compileDraftArtifact(nextDraft, {
       compiledId: state.artifact.compiledId,
       baseArtifact: state.artifact,
+      tokenConfig: this.sharedSession.state.tokens,
     });
     return {
       ...state,
@@ -1480,6 +1482,7 @@ const hostEventHandlers: HostEventHandlerMap = {
     const nextArtifact = compileDraftArtifact(nextDraft, {
       compiledId: state.artifact.compiledId,
       baseArtifact: state.artifact,
+      tokenConfig: this.sharedSession.state.tokens,
     });
     const selectionPath = buildNodePath(insert.nodeId);
     return {
@@ -1503,6 +1506,7 @@ const hostEventHandlers: HostEventHandlerMap = {
     const nextArtifact = compileDraftArtifact(nextDraft, {
       compiledId: state.artifact.compiledId,
       baseArtifact: state.artifact,
+      tokenConfig: this.sharedSession.state.tokens,
     });
     const selectionPath = buildNodePath(insert.nodeId);
     return {
