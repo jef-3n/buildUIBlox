@@ -5,6 +5,11 @@ export type FramePath = `frames.${FrameName}`;
 export type StylerPath = `${ElementPath}.props.styler`;
 export type BindingPath = `${ElementPath}.props.bindings.${string}`;
 
+export const elementPathFormat = 'elements.{elementId}' as const;
+export const framePathFormat = 'frames.{frame}' as const;
+export const stylerPathFormat = 'elements.{elementId}.props.styler' as const;
+export const bindingPathFormat = 'elements.{elementId}.props.bindings.{bindingKey}' as const;
+
 export const elementPathPattern = /^elements\.(?<id>.+)$/;
 export const framePathPattern = /^frames\.(?<frame>desktop|tablet|mobile)$/;
 export const stylerPathPattern = /^elements\.(?<id>.+)\.props\.styler$/;
