@@ -94,6 +94,49 @@ export class NuwaHost extends LitElement {
       border-radius: 6px;
       background: #f8fafc;
     }
+
+    .metadata-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-left: 1px solid #e2e8f0;
+      min-width: 240px;
+    }
+
+    .metadata-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .metadata-list {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+      color: #1f2937;
+    }
+
+    .metadata-label {
+      font-weight: 600;
+      color: #475569;
+    }
+
+    .metadata-value {
+      word-break: break-word;
+    }
+
+    .metadata-props {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      margin: 0;
+    }
   `;
 
   connectedCallback() {
@@ -169,6 +212,48 @@ export class NuwaHost extends LitElement {
     `;
   }
 
+  private renderSelectionMetadata(activeFrame: FrameName) {
+    const selectionPath = this.hostState.selection.path;
+    if (!selectionPath) {
+      return html`<div class="stub">Select a node to view metadata.</div>`;
+    }
+
+    const nodeId = getElementIdFromPath(selectionPath);
+    const node = this.hostState.artifact.runtime.nodes[nodeId];
+    if (!node) {
+      return html`<div class="stub">No metadata found for ${nodeId}.</div>`;
+    }
+
+    const frame =
+      this.hostState.artifact.runtime.layout.frames[activeFrame] ??
+      this.hostState.artifact.runtime.layout.frames.desktop;
+    const placement = frame?.placements?.[nodeId];
+    const propsSummary = node.props ? JSON.stringify(node.props, null, 2) : 'No props';
+    const childCount = node.children?.length ?? 0;
+
+    return html`
+      <div class="metadata-panel">
+        <div class="metadata-title">Selected node metadata</div>
+        <div class="metadata-list">
+          <div class="metadata-label">Path</div>
+          <div class="metadata-value">${selectionPath}</div>
+          <div class="metadata-label">Node ID</div>
+          <div class="metadata-value">${nodeId}</div>
+          <div class="metadata-label">Type</div>
+          <div class="metadata-value">${node.type}</div>
+          <div class="metadata-label">Frame</div>
+          <div class="metadata-value">${activeFrame}</div>
+          <div class="metadata-label">Placement</div>
+          <div class="metadata-value">${placement?.area ?? 'Unplaced'}</div>
+          <div class="metadata-label">Children</div>
+          <div class="metadata-value">${childCount}</div>
+        </div>
+        <div>
+          <div class="metadata-label">Props</div>
+          <pre class="metadata-props">${propsSummary}</pre>
+        </div>
+      </div>
+    `;
   private handleFrameSwitch(event: CustomEvent<{ frame: FrameName }>) {
     event.stopPropagation();
     const frame = event.detail?.frame;
