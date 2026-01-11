@@ -6,6 +6,7 @@ import {
   type HostEventEnvelope,
 } from '../contracts/event-envelope';
 import { resolveObservationCategory } from './observation';
+import type { GlobalSessionPipelineState } from '../contracts/global-session';
 
 @customElement('telemetry-sniffer')
 export class TelemetrySniffer extends LitElement {
@@ -24,6 +25,12 @@ export class TelemetrySniffer extends LitElement {
   @state()
   private packets: ObservationPacket[] = [];
 
+  @state()
+  private envelopes: HostEventEnvelope[] = [];
+
+  @state()
+  private pipelineState: GlobalSessionPipelineState | null = null;
+
   private eventSequence = 0;
 
   private handleObservation = (event: Event) => {
@@ -40,8 +47,11 @@ export class TelemetrySniffer extends LitElement {
       event: detail.type,
       payload: {},
     };
-    const next = [packet, ...this.packets].slice(0, 12);
-    this.packets = next;
+    this.packets = [packet, ...this.packets].slice(0, 12);
+    this.envelopes = [detail, ...this.envelopes].slice(0, 6);
+    if (detail.type === 'pipeline.state') {
+      this.pipelineState = detail.payload.pipeline ?? null;
+    }
   };
 
   connectedCallback() {
@@ -112,6 +122,14 @@ export class TelemetrySniffer extends LitElement {
       color: #1e293b;
     }
 
+    .envelope {
+      margin: 6px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.7rem;
+      color: #0f172a;
+    }
+
     .timestamp {
       font-size: 0.7rem;
       color: #64748b;
@@ -126,6 +144,7 @@ export class TelemetrySniffer extends LitElement {
   render() {
     const latestPipeline = this.getLatestPacket(['pipeline', 'draft']);
     const latestSelection = this.getLatestPacket(['selection']);
+    const envelopeSnapshot = this.envelopes[0];
 
     return html`
       <section class="section">
@@ -133,6 +152,16 @@ export class TelemetrySniffer extends LitElement {
         <div><span class="label">Frame</span><span class="value">${this.activeFrame}</span></div>
         <div><span class="label">Compiled</span><span class="value">${this.compiledId}</span></div>
         <div><span class="label">Draft</span><span class="value">${this.draftId}</span></div>
+        <div>
+          <span class="label">Status</span>
+          <span class="value">${this.pipelineState?.status ?? 'idle'}</span>
+        </div>
+        <div>
+          <span class="label">Pipeline IDs</span>
+          <span class="value">
+            ${this.pipelineState?.draftId ?? '—'} · ${this.pipelineState?.compiledId ?? '—'}
+          </span>
+        </div>
         <div>
           <span class="label">Last event</span>
           <span class="value">${latestPipeline?.event ?? '—'}</span>
@@ -154,6 +183,18 @@ export class TelemetrySniffer extends LitElement {
         <div class="timestamp">
           ${latestSelection ? `Last update ${latestSelection.emittedAt}` : 'No selection events yet.'}
         </div>
+      </section>
+      <section class="section">
+        <h3>Root listener envelope</h3>
+        ${envelopeSnapshot
+          ? html`
+              <div class="packet">
+                <div>${envelopeSnapshot.type}</div>
+                <div class="timestamp">${envelopeSnapshot.createdAt}</div>
+                <pre class="envelope">${JSON.stringify(envelopeSnapshot, null, 2)}</pre>
+              </div>
+            `
+          : html`<div class="empty">Waiting for standardized envelopes...</div>`}
       </section>
       <section class="section">
         <h3>Observation stream</h3>

@@ -2,15 +2,20 @@ import { LitElement, html, css } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { customElement, state } from 'lit/decorators.js';
 import './compiled-canvas';
-import './selection-metadata';
+import './inspector-panel';
 import { sampleCompiledArtifact } from './sample-compiled';
 import { sampleDraft } from './sample-draft';
 import type { FrameName } from './frame-types';
 import { elementPathPattern, getElementIdFromPath } from './paths';
-import { normalizeDraftStylerPath, setDraftPathValue } from './path-edits';
+import {
+  normalizeDraftBindingPath,
+  normalizeDraftStylerPath,
+  setDraftPathValue,
+} from './path-edits';
 import type { ObservationPacket } from './telemetry';
 import './telemetry-sniffer';
 import {
+  BINDING_UPDATE_PROP,
   HOST_EVENT_ENVELOPE_EVENT,
   STYLER_UPDATE_PROP,
   createHostEventEnvelope,
@@ -21,6 +26,8 @@ import {
   type HostEventEnvelope,
   type HostEventPayloadMap,
   type HostEventType,
+  WAREHOUSE_ADD_INTENT,
+  WAREHOUSE_MOVE_INTENT,
 } from '../contracts/event-envelope';
 import {
   getSlotReplacementInstruction,
@@ -44,6 +51,7 @@ import {
   type BuilderUiComponentEntry,
 } from '../system/components/builder-ui/manifest';
 import { loadBuilderUiRegistry } from '../system/components/builder-ui/registry';
+import './warehouse-drawer';
 
 
 type HostSlotReplacementStateWithEntry = HostSlotReplacementState & {
@@ -93,6 +101,9 @@ export class NuwaHost extends LitElement {
     right: { status: 'idle' },
     bottom: { status: 'idle' },
   };
+
+  @state()
+  private ghostEditMode = false;
 
   static styles = css`
     :host {
@@ -162,49 +173,6 @@ export class NuwaHost extends LitElement {
       border-radius: 6px;
       background: #f8fafc;
     }
-
-    .metadata-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
-      border-left: 1px solid #e2e8f0;
-      min-width: 240px;
-    }
-
-    .metadata-title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      color: #0f172a;
-    }
-
-    .metadata-list {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 0.5rem 0.75rem;
-      font-size: 0.85rem;
-      color: #1f2937;
-    }
-
-    .metadata-label {
-      font-weight: 600;
-      color: #475569;
-    }
-
-    .metadata-value {
-      word-break: break-word;
-    }
-
-    .metadata-props {
-      background: #0f172a;
-      color: #e2e8f0;
-      border-radius: 8px;
-      padding: 0.75rem;
-      font-size: 0.75rem;
-      line-height: 1.4;
-      white-space: pre-wrap;
-      margin: 0;
-    }
   `;
 
   connectedCallback() {
@@ -216,6 +184,10 @@ export class NuwaHost extends LitElement {
     this.sharedSession.addEventListener(
       SHARED_SESSION_UPDATE_EVENT,
       this.handleSharedSessionUpdate as EventListener
+    );
+    this.addEventListener(
+      'INSPECTOR_GHOST_EDIT_TOGGLE',
+      this.handleGhostEditToggle as EventListener
     );
     this.sharedSession.connect();
     this.loadBuilderUiSlots();
@@ -230,6 +202,10 @@ export class NuwaHost extends LitElement {
     this.sharedSession.removeEventListener(
       SHARED_SESSION_UPDATE_EVENT,
       this.handleSharedSessionUpdate as EventListener
+    );
+    this.removeEventListener(
+      'INSPECTOR_GHOST_EDIT_TOGGLE',
+      this.handleGhostEditToggle as EventListener
     );
     this.sharedSession.disconnect();
     super.disconnectedCallback();
@@ -248,7 +224,7 @@ export class NuwaHost extends LitElement {
       <div class="drawer left">
         ${this.renderSlotReplacement(
           'left',
-          html`<div class="stub">Left drawer</div>`
+          html`<warehouse-drawer></warehouse-drawer>`
         )}
       </div>
       <main class="center">
@@ -259,12 +235,27 @@ export class NuwaHost extends LitElement {
             .activeFrame=${activeFrame}
             .selectedPath=${this.hostState.selection.path}
             .scale=${this.hostState.ui.scale}
+            .ghostEditMode=${this.ghostEditMode}
           ></compiled-canvas>
         </slot>
       </main>
       <div class="drawer right">
         ${this.renderSlotReplacement(
           'right',
+          html`
+            <inspector-panel
+              .artifact=${this.hostState.artifact}
+              .draft=${this.hostState.draft}
+              .selectedPath=${this.hostState.selection.path}
+              .activeFrame=${activeFrame}
+              .ghostEditMode=${this.ghostEditMode}
+            ></inspector-panel>
+          `
+        )}
+      </div>
+      <div class="drawer bottom">
+        ${this.renderSlotReplacement(
+          'bottom',
           html`
             <telemetry-sniffer
               .activeFrame=${activeFrame}
@@ -273,12 +264,6 @@ export class NuwaHost extends LitElement {
               .draftId=${this.hostState.draft.draftId}
             ></telemetry-sniffer>
           `
-        )}
-      </div>
-      <div class="drawer bottom">
-        ${this.renderSlotReplacement(
-          'bottom',
-          html`<div class="stub">Bottom drawer</div>`
         )}
       </div>
     `;
@@ -311,50 +296,6 @@ export class NuwaHost extends LitElement {
             </button>
           `
         )}
-      </div>
-    `;
-  }
-
-  private renderSelectionMetadata(activeFrame: FrameName) {
-    const selectionPath = this.hostState.selection.path;
-    if (!selectionPath) {
-      return html`<div class="stub">Select a node to view metadata.</div>`;
-    }
-
-    const nodeId = getElementIdFromPath(selectionPath);
-    const node = this.hostState.artifact.runtime.nodes[nodeId];
-    if (!node) {
-      return html`<div class="stub">No metadata found for ${nodeId}.</div>`;
-    }
-
-    const frame =
-      this.hostState.artifact.runtime.layout.frames[activeFrame] ??
-      this.hostState.artifact.runtime.layout.frames.desktop;
-    const placement = frame?.placements?.[nodeId];
-    const propsSummary = node.props ? JSON.stringify(node.props, null, 2) : 'No props';
-    const childCount = node.children?.length ?? 0;
-
-    return html`
-      <div class="metadata-panel">
-        <div class="metadata-title">Selected node metadata</div>
-        <div class="metadata-list">
-          <div class="metadata-label">Path</div>
-          <div class="metadata-value">${selectionPath}</div>
-          <div class="metadata-label">Node ID</div>
-          <div class="metadata-value">${nodeId}</div>
-          <div class="metadata-label">Type</div>
-          <div class="metadata-value">${node.type}</div>
-          <div class="metadata-label">Frame</div>
-          <div class="metadata-value">${activeFrame}</div>
-          <div class="metadata-label">Placement</div>
-          <div class="metadata-value">${placement?.area ?? 'Unplaced'}</div>
-          <div class="metadata-label">Children</div>
-          <div class="metadata-value">${childCount}</div>
-        </div>
-        <div>
-          <div class="metadata-label">Props</div>
-          <pre class="metadata-props">${propsSummary}</pre>
-        </div>
       </div>
     `;
   }
@@ -402,6 +343,13 @@ export class NuwaHost extends LitElement {
       return;
     }
     this.emitHostEvent('session.sync', { session: detail.state }, 'shared-session');
+  }
+
+  private handleGhostEditToggle(event: CustomEvent<{ enabled: boolean }>) {
+    if (typeof event.detail?.enabled !== 'boolean') {
+      return;
+    }
+    this.ghostEditMode = event.detail.enabled;
   }
 
   protected updated(changedProperties: Map<PropertyKey, unknown>) {
@@ -724,6 +672,21 @@ const hostEventHandlers: HostEventHandlerMap = {
       draft: nextDraft,
     };
   },
+  [BINDING_UPDATE_PROP]: (state, event) => {
+    const normalizedPath = normalizeDraftBindingPath(event.payload.path);
+    if (!normalizedPath) {
+      return state;
+    }
+    const nextDraft = setDraftPathValue(state.draft, normalizedPath, event.payload.value);
+    if (!nextDraft) {
+      return state;
+    }
+    return {
+      ...state,
+      ui: { ...state.ui, activeSurface: 'metadata' },
+      draft: nextDraft,
+    };
+  },
   'session.sync': (state, event) => {
     const { session } = event.payload;
     const nextFrame = session.activeFrame ?? state.ui.activeFrame;
@@ -779,6 +742,8 @@ const hostEventHandlers: HostEventHandlerMap = {
   'session.state': (state) => state,
   'pipeline.state': (state) => state,
   'ghost.trigger': (state) => state,
+  [WAREHOUSE_ADD_INTENT]: (state) => state,
+  [WAREHOUSE_MOVE_INTENT]: (state) => state,
 };
 
 const isSelectionInFrame = (

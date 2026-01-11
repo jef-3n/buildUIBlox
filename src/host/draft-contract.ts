@@ -8,6 +8,7 @@ export type DraftStyler = Record<
 export type DraftNode = {
   props?: {
     styler?: DraftStyler;
+    bindings?: Record<string, string>;
   };
 };
 
