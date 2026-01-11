@@ -19,6 +19,7 @@ import {
   type CompiledNode,
   isCompatibleCompiledArtifact,
 } from './compiled-contract';
+import type { DraftArtifact } from './draft-contract';
 
 export type { CompiledArtifact, CompiledFrame, CompiledNode } from './compiled-contract';
 export { COMPILED_SCHEMA_VERSION, isCompatibleCompiledArtifact } from './compiled-contract';
@@ -35,6 +36,16 @@ const resolveStyler = (
   };
   const frameStyles = frames?.[frame] ?? {};
   return { ...base, ...frameStyles } as Record<string, StyleValue>;
+};
+
+const resolveDraftStyler = (
+  draft: DraftArtifact | undefined,
+  nodeId: string,
+  frame: FrameName
+) => {
+  const draftStyler = draft?.elements?.[nodeId]?.props?.styler;
+  if (!draftStyler) return {};
+  return resolveStyler(draftStyler, frame);
 };
 
 @customElement('compiled-canvas')
@@ -88,6 +99,9 @@ export class CompiledCanvas extends LitElement {
 
   @property({ attribute: false })
   artifact?: CompiledArtifact;
+
+  @property({ attribute: false })
+  draft?: DraftArtifact;
 
   @property({ type: String })
   activeFrame: FrameName = 'desktop';
@@ -162,6 +176,7 @@ export class CompiledCanvas extends LitElement {
     const style = {
       gridArea: placement?.area,
       ...resolveStyler(node.props?.styler, frameName),
+      ...resolveDraftStyler(this.draft, nodeId, frameName),
     };
 
     const classes = classMap(

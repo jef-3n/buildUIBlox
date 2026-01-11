@@ -9,7 +9,7 @@ const parsePathSegments = (path: string) =>
     .filter(Boolean);
 
 const isObjectLike = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value && typeof value === 'object');
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
 const cloneContainer = (value: unknown) => {
   if (Array.isArray(value)) {
@@ -21,17 +21,23 @@ const cloneContainer = (value: unknown) => {
   return {};
 };
 
-const hasLayoutFrameSegment = (segments: string[], index: number) => {
-  return segments[index] === 'frames' && segments[index - 1] === 'layout';
-};
-
 const hasStylerFrameSegment = (segments: string[], index: number) => {
   return segments[index] === 'frames' && segments[index - 1] === 'styler';
 };
 
-export const normalizeFrameScopedPath = (path: string, activeFrame: FrameName) => {
+const isDraftStylerPath = (segments: string[]) => {
+  return (
+    segments[0] === 'elements' &&
+    segments.length >= 4 &&
+    segments[2] === 'props' &&
+    segments[3] === 'styler'
+  );
+};
+
+export const normalizeDraftStylerPath = (path: string, activeFrame: FrameName) => {
   const segments = parsePathSegments(path);
   if (!segments.length) return null;
+  if (!isDraftStylerPath(segments)) return null;
 
   const applyIsolation = (index: number) => {
     const frameSegment = segments[index + 1];
@@ -43,7 +49,7 @@ export const normalizeFrameScopedPath = (path: string, activeFrame: FrameName) =
   };
 
   for (let index = 0; index < segments.length; index += 1) {
-    if (hasLayoutFrameSegment(segments, index) || hasStylerFrameSegment(segments, index)) {
+    if (hasStylerFrameSegment(segments, index)) {
       if (!applyIsolation(index)) {
         return null;
       }
@@ -55,23 +61,26 @@ export const normalizeFrameScopedPath = (path: string, activeFrame: FrameName) =
 
 const isBlockedRootPath = (segments: string[]) => {
   if (!segments.length) return true;
-  const [root, second, third, fourth] = segments;
-  if (root === 'runtime' && segments.length === 1) return true;
-  if (root === 'runtime' && second === 'data' && segments.length === 2) return true;
-  if (root === 'runtime' && second === 'layout' && segments.length === 2) return true;
-  if (root === 'runtime' && second === 'layout' && third === 'frames' && segments.length === 3) return true;
-  if (
-    root === 'runtime' &&
-    second === 'layout' &&
-    third === 'frames' &&
-    frameNames.includes(fourth as FrameName) &&
-    segments.length === 4
-  ) {
-    return true;
-  }
-  if (root === 'runtime' && second === 'nodes' && segments.length === 2) return true;
-  if (root === 'runtime' && second === 'nodes' && segments.length === 3) return true;
+  if (!isDraftStylerPath(segments)) return true;
+  if (segments[0] === 'elements' && segments.length === 2) return true;
+  if (segments[0] === 'elements' && segments.length === 3) return true;
   return false;
+};
+
+const mergeObjects = (
+  base: Record<string, unknown>,
+  next: Record<string, unknown>
+): Record<string, unknown> => {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(next)) {
+    const existing = merged[key];
+    if (isObjectLike(existing) && isObjectLike(value)) {
+      merged[key] = mergeObjects(existing, value);
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
 };
 
 export const getPathValue = (data: unknown, path?: string) => {
@@ -85,7 +94,7 @@ export const getPathValue = (data: unknown, path?: string) => {
   }, data);
 };
 
-export const setPathValue = <T extends Record<string, unknown>>(
+export const setDraftPathValue = <T extends Record<string, unknown>>(
   target: T,
   path: string,
   value: unknown
@@ -95,21 +104,21 @@ export const setPathValue = <T extends Record<string, unknown>>(
     return null;
   }
 
-  const existing = getPathValue(target, path);
-  if (isObjectLike(existing) && isObjectLike(value)) {
-    return null;
-  }
-
   const clonedRoot = cloneContainer(target) as T;
   let cursor: Record<string, unknown> = clonedRoot;
   let source: unknown = target;
+  const existing = getPathValue(target, path);
 
   for (let index = 0; index < segments.length; index += 1) {
     const key = segments[index];
     const isLast = index === segments.length - 1;
 
     if (isLast) {
-      cursor[key] = value;
+      if (isObjectLike(existing) && isObjectLike(value)) {
+        cursor[key] = mergeObjects(existing, value);
+      } else {
+        cursor[key] = value;
+      }
       break;
     }
 

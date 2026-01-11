@@ -124,7 +124,7 @@ export class TelemetrySniffer extends LitElement {
   `;
 
   render() {
-    const latestPipeline = this.getLatestPacket(['pipeline', 'artifact']);
+    const latestPipeline = this.getLatestPacket(['pipeline', 'draft']);
     const latestSelection = this.getLatestPacket(['selection']);
 
     return html`

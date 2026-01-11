@@ -1,4 +1,4 @@
-export type ObservationCategory = 'pipeline' | 'selection' | 'artifact';
+export type ObservationCategory = 'pipeline' | 'selection' | 'draft';
 
 export type ObservationPacket = {
   id: string;
