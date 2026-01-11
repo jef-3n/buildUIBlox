@@ -22,6 +22,9 @@ export const UI_DRAWER_OPEN = 'ui.drawer.open' as const;
 export const UI_DRAWER_CLOSE = 'ui.drawer.close' as const;
 export const WAREHOUSE_ADD_INTENT = 'warehouse.addIntent' as const;
 export const WAREHOUSE_MOVE_INTENT = 'warehouse.moveIntent' as const;
+export const PIPELINE_TRIGGER = 'pipeline.trigger' as const;
+export const PIPELINE_ABORT = 'pipeline.abort' as const;
+export const PIPELINE_PUBLISH = 'pipeline.publish' as const;
 export const BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY =
   'builderUi.bootstrap.toggleRegistry' as const;
 export const BUILDER_UI_BOOTSTRAP_PUBLISH = 'builderUi.bootstrap.publish' as const;
@@ -44,6 +47,9 @@ export type HostEventType =
   | 'session.sync'
   | 'session.state'
   | 'pipeline.state'
+  | typeof PIPELINE_TRIGGER
+  | typeof PIPELINE_ABORT
+  | typeof PIPELINE_PUBLISH
   | 'ghost.trigger'
   | typeof WAREHOUSE_ADD_INTENT
   | typeof WAREHOUSE_MOVE_INTENT
@@ -72,6 +78,9 @@ export type HostEventPayloadMap = {
   'session.sync': { session: GlobalSessionSnapshot };
   'session.state': { session: GlobalSessionSnapshot; origin: 'local' | 'remote' };
   'pipeline.state': { pipeline: GlobalSessionPipelineState | null };
+  [PIPELINE_TRIGGER]: { draftId: string };
+  [PIPELINE_ABORT]: { reason?: string };
+  [PIPELINE_PUBLISH]: { compiledId?: string; draftId?: string };
   'ghost.trigger': {
     type: string;
     payload?: unknown;
@@ -187,6 +196,15 @@ const hasHostEventPayload = (
       return (
         payload.pipeline === null ||
         isCompatibleGlobalSessionPipelineState(payload.pipeline)
+      );
+    case PIPELINE_TRIGGER:
+      return hasString(payload.draftId);
+    case PIPELINE_ABORT:
+      return typeof payload.reason === 'undefined' || hasString(payload.reason);
+    case PIPELINE_PUBLISH:
+      return (
+        (typeof payload.compiledId === 'undefined' || hasString(payload.compiledId)) &&
+        (typeof payload.draftId === 'undefined' || hasString(payload.draftId))
       );
     case 'ghost.trigger':
       return hasString(payload.type) && hasString(payload.path) && hasString(payload.hotspotId);
