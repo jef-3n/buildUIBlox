@@ -8,7 +8,7 @@ import { sampleDraft } from './sample-draft';
 import type { FrameName } from './frame-types';
 import type { DraftArtifact } from './draft-contract';
 import type { CompiledArtifact } from './compiled-contract';
-import { elementPathPattern, getElementIdFromPath } from './paths';
+import { nodePathPattern, getNodeIdFromPath } from './paths';
 import {
   normalizeDraftBindingPath,
   normalizeDraftStylerPath,
@@ -94,11 +94,11 @@ export class NuwaHost extends LitElement {
     activeSurface: 'canvas',
     scale: DEFAULT_UI_SCALE,
     drawers: createUiDrawersState(),
-    draftId: sampleCompiledArtifact.draftId,
+    draftId: sampleDraft.metadata.draftId,
     compiledId: sampleCompiledArtifact.compiledId,
   });
   private draftStore = new DraftArtifactStore(
-    sampleDraft.appId,
+    sampleDraft.metadata.appId,
     sampleDraft
   );
   private compiledStore = new CompiledArtifactStore(
@@ -298,7 +298,7 @@ export class NuwaHost extends LitElement {
               .activeFrame=${activeFrame}
               .selectionPath=${this.hostState.selection.path ?? ''}
               .compiledId=${this.hostState.artifact.compiledId}
-              .draftId=${this.hostState.draft.draftId}
+              .draftId=${this.hostState.draft.metadata.draftId}
             ></telemetry-sniffer>
           `
         )}
@@ -332,7 +332,7 @@ export class NuwaHost extends LitElement {
           .activeFrame=${this.hostState.ui.activeFrame}
           .selectionPath=${this.hostState.selection.path ?? ''}
           .compiledId=${this.hostState.artifact.compiledId}
-          .draftId=${this.hostState.draft.draftId}
+          .draftId=${this.hostState.draft.metadata.draftId}
         ></${tag}>`;
       case 'top':
       case 'left':
@@ -633,9 +633,9 @@ export class NuwaHost extends LitElement {
         return true;
       }
       case PIPELINE_PUBLISH: {
-        const draftId = envelope.payload.draftId ?? this.hostState.draft.draftId;
+        const draftId = envelope.payload.draftId ?? this.hostState.draft.metadata.draftId;
         const draft =
-          this.hostState.draft.draftId === draftId
+          this.hostState.draft.metadata.draftId === draftId
             ? this.hostState.draft
             : this.draftStore.read();
         const compiled = compileDraftArtifact(draft, {
@@ -923,7 +923,7 @@ const hostEventHandlers: HostEventHandlerMap = {
   'ui.surface': (state) => state,
   'selection.set': (state, event) => {
     const path = event.payload.path;
-    if (!path || !elementPathPattern.test(path)) {
+    if (!path || !nodePathPattern.test(path)) {
       return state;
     }
     if (!isSelectionInFrame(state.artifact, state.ui.activeFrame, path)) {
@@ -1085,11 +1085,14 @@ const hostEventHandlers: HostEventHandlerMap = {
   [PIPELINE_PUBLISH]: (state) => state,
   [GHOST_MAP_EDIT]: (state, event) => {
     const sourceGhostMap =
-      state.draft.ghostMap ?? state.artifact.runtime.ghostMap ?? [];
+      state.draft.assets.ghostMap ?? state.artifact.runtime.ghostMap ?? [];
     const nextGhostMap = upsertGhostMapHotspot(sourceGhostMap, event.payload);
     const nextDraft = {
       ...state.draft,
-      ghostMap: nextGhostMap,
+      assets: {
+        ...state.draft.assets,
+        ghostMap: nextGhostMap,
+      },
     };
     const nextArtifact = compileDraftArtifact(nextDraft, {
       compiledId: state.artifact.compiledId,
@@ -1116,7 +1119,7 @@ const isSelectionInFrame = (
   selectionPath?: string
 ) => {
   if (!selectionPath) return false;
-  const nodeId = getElementIdFromPath(selectionPath);
+  const nodeId = getNodeIdFromPath(selectionPath);
   const frame = artifact.runtime.layout.frames[frameName];
   if (!frame) return false;
   return frame.order.includes(nodeId) || nodeId in frame.placements;

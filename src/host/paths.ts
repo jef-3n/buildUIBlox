@@ -1,28 +1,28 @@
 import type { FrameName } from './frame-types';
 
-export type ElementPath = `elements.${string}`;
+export type NodePath = `nodes.${string}`;
 export type FramePath = `frames.${FrameName}`;
-export type StylerPath = `${ElementPath}.props.styler`;
-export type BindingPath = `${ElementPath}.props.bindings.${string}`;
+export type StylerPath = `${NodePath}.props.styler`;
+export type BindingPath = `${NodePath}.props.bindings.${string}`;
 
-export const elementPathFormat = 'elements.{elementId}' as const;
+export const nodePathFormat = 'nodes.{nodeId}' as const;
 export const framePathFormat = 'frames.{frame}' as const;
-export const stylerPathFormat = 'elements.{elementId}.props.styler' as const;
-export const bindingPathFormat = 'elements.{elementId}.props.bindings.{bindingKey}' as const;
+export const stylerPathFormat = 'nodes.{nodeId}.props.styler' as const;
+export const bindingPathFormat = 'nodes.{nodeId}.props.bindings.{bindingKey}' as const;
 
-export const elementPathPattern = /^elements\.(?<id>.+)$/;
+export const nodePathPattern = /^nodes\.(?<id>.+)$/;
 export const framePathPattern = /^frames\.(?<frame>desktop|tablet|mobile)$/;
-export const stylerPathPattern = /^elements\.(?<id>.+)\.props\.styler$/;
-export const bindingPathPattern = /^elements\.(?<id>.+)\.props\.bindings\.(?<binding>.+)$/;
+export const stylerPathPattern = /^nodes\.(?<id>.+)\.props\.styler$/;
+export const bindingPathPattern = /^nodes\.(?<id>.+)\.props\.bindings\.(?<binding>.+)$/;
 
-export const buildElementPath = (nodeId: string): ElementPath => `elements.${nodeId}`;
+export const buildNodePath = (nodeId: string): NodePath => `nodes.${nodeId}`;
 export const buildFramePath = (frame: FrameName): FramePath => `frames.${frame}`;
 export const buildStylerPath = (nodeId: string): StylerPath =>
-  `${buildElementPath(nodeId)}.props.styler`;
+  `${buildNodePath(nodeId)}.props.styler`;
 export const buildBindingPath = (nodeId: string, bindingKey: string): BindingPath =>
-  `${buildElementPath(nodeId)}.props.bindings.${bindingKey}`;
+  `${buildNodePath(nodeId)}.props.bindings.${bindingKey}`;
 
-export const getElementIdFromPath = (path: string) => {
-  const match = elementPathPattern.exec(path);
+export const getNodeIdFromPath = (path: string) => {
+  const match = nodePathPattern.exec(path);
   return match?.groups?.id ?? path;
 };

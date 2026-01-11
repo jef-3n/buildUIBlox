@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { buildElementPath } from '../host/paths';
+import { buildNodePath } from '../host/paths';
 import type { FrameName } from '../host/frame-types';
 import { buildHotspotStyle, type GhostRect } from './geometry';
 
@@ -135,7 +135,7 @@ export class GhostLayer extends LitElement {
       hotspot.rect.w,
       hotspot.rect.h
     );
-    const path = hotspot.path ?? buildElementPath(hotspot.id);
+    const path = hotspot.path ?? buildNodePath(hotspot.id);
 
     const selectionDetail: GhostSelectDetail = {
       path,

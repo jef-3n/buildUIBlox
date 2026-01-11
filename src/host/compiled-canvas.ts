@@ -16,7 +16,7 @@ import {
   HOST_EVENT_ENVELOPE_EVENT,
   createHostEventEnvelope,
 } from '../contracts/event-envelope';
-import { getElementIdFromPath } from './paths';
+import { getNodeIdFromPath } from './paths';
 import { getPathValue } from './path-edits';
 import type { FrameName } from './frame-types';
 import {
@@ -49,7 +49,7 @@ const resolveDraftStyler = (
   nodeId: string,
   frame: FrameName
 ) => {
-  const draftStyler = draft?.elements?.[nodeId]?.props?.styler;
+  const draftStyler = draft?.nodes?.[nodeId]?.props?.styler;
   if (!draftStyler) return {};
   return resolveStyler(draftStyler, frame);
 };
@@ -315,7 +315,7 @@ export class CompiledCanvas extends LitElement {
 
   private isSelected(nodeId: string) {
     if (!this.selectedPath) return false;
-    return getElementIdFromPath(this.selectedPath) === nodeId;
+    return getNodeIdFromPath(this.selectedPath) === nodeId;
   }
 
   private handleGhostSelection(event: CustomEvent<GhostSelectDetail>) {
