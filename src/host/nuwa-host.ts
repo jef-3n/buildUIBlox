@@ -46,9 +46,12 @@ type HostSlotReplacementStateWithEntry = HostSlotReplacementState & {
 export class NuwaHost extends LitElement {
   private observationSequence = 0;
   private sharedSession = createSharedSession({
+    appId: 'demo-app',
     activeFrame: 'desktop',
     selectionPath: undefined,
     activeSurface: 'canvas',
+    draftId: sampleCompiledArtifact.draftId,
+    compiledId: sampleCompiledArtifact.compiledId,
   });
   private slotLoadSequence: Record<HostSlotName, number> = {
     top: 0,
@@ -333,7 +336,29 @@ export class NuwaHost extends LitElement {
 
   private handleSharedSessionUpdate(event: CustomEvent<SharedSessionEventDetail>) {
     const detail = event.detail;
-    if (!detail || detail.origin !== 'remote') {
+    if (!detail) {
+      return;
+    }
+    this.emitHostEvent(
+      'session.state',
+      { session: detail.state, origin: detail.origin },
+      'shared-session'
+    );
+    if (detail.changes.pipeline) {
+      this.emitHostEvent(
+        'pipeline.state',
+        { pipeline: detail.state.pipeline ?? null },
+        'shared-session'
+      );
+    }
+    if (detail.changes.surface) {
+      this.emitHostEvent(
+        'ui.surface',
+        { surface: detail.state.activeSurface },
+        'shared-session'
+      );
+    }
+    if (detail.origin !== 'remote') {
       return;
     }
     this.emitHostEvent('session.sync', { session: detail.state }, 'shared-session');
@@ -518,6 +543,7 @@ const hostEventHandlers: HostEventHandlerMap = {
       },
     };
   },
+  'ui.surface': (state) => state,
   'selection.set': (state, event) => {
     const path = event.payload.path;
     if (!path || !elementPathPattern.test(path)) {
@@ -602,6 +628,8 @@ const hostEventHandlers: HostEventHandlerMap = {
       selectionsByFrame: nextSelectionsByFrame,
     };
   },
+  'session.state': (state) => state,
+  'pipeline.state': (state) => state,
   'ghost.trigger': (state) => state,
 };
 

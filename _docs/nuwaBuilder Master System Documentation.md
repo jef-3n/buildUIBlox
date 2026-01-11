@@ -229,9 +229,22 @@ This section is the single source of truth for schema authority, validation, and
   "sessionId": "string",
   "appId": "string",
   "userId": "string",
-  "buildStatus": "idle|compiling|error|success",
   "draftId": "string",
   "compiledId": "string",
+  "compiled": {
+    "compiledId": "string",
+    "draftId": "string",
+    "publishedAt": "iso-8601?"
+  },
+  "pipeline": {
+    "status": "idle|compiling|error|success",
+    "triggeredAt": "iso-8601?",
+    "abortedAt": "iso-8601?",
+    "publishedAt": "iso-8601?",
+    "draftId": "string?",
+    "compiledId": "string?",
+    "error": { "code": "string", "message": "string" }
+  },
   "draftLock": {
     "locked": "boolean",
     "draftId": "string",

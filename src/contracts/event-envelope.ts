@@ -1,8 +1,11 @@
 import type { FrameName } from '../host/frame-types';
 import {
+  type GlobalSessionPipelineState,
   type GlobalSessionSnapshot,
+  isCompatibleGlobalSessionPipelineState,
   isCompatibleGlobalSessionSnapshot,
 } from './global-session';
+import type { ActiveSurface } from './ui-state';
 import {
   hasOptionalString,
   hasString,
@@ -18,13 +21,17 @@ export const COMPATIBLE_HOST_EVENT_ENVELOPE_VERSIONS = new Set<string>([
 
 export type HostEventType =
   | 'ui.setFrame'
+  | 'ui.surface'
   | 'selection.set'
   | 'artifact.pathEdit'
   | 'session.sync'
+  | 'session.state'
+  | 'pipeline.state'
   | 'ghost.trigger';
 
 export type HostEventPayloadMap = {
   'ui.setFrame': { frame: FrameName };
+  'ui.surface': { surface: ActiveSurface };
   'selection.set': {
     path: string;
     frame?: FrameName;
@@ -34,6 +41,8 @@ export type HostEventPayloadMap = {
   };
   'artifact.pathEdit': { path: string; value: unknown; frame?: FrameName };
   'session.sync': { session: GlobalSessionSnapshot };
+  'session.state': { session: GlobalSessionSnapshot; origin: 'local' | 'remote' };
+  'pipeline.state': { pipeline: GlobalSessionPipelineState | null };
   'ghost.trigger': {
     type: string;
     payload?: unknown;
@@ -54,9 +63,22 @@ export type HostEventEnvelope<T extends HostEventType = HostEventType> = {
 };
 
 const VALID_FRAMES: FrameName[] = ['desktop', 'tablet', 'mobile'];
+const VALID_SURFACES: ActiveSurface[] = [
+  'canvas',
+  'frames',
+  'metadata',
+  'telemetry',
+  'unknown',
+];
 
 const isFrameName = (value: unknown): value is FrameName =>
   typeof value === 'string' && VALID_FRAMES.includes(value as FrameName);
+
+const isActiveSurface = (value: unknown): value is ActiveSurface =>
+  typeof value === 'string' && VALID_SURFACES.includes(value as ActiveSurface);
+
+const isSessionOrigin = (value: unknown): value is 'local' | 'remote' =>
+  value === 'local' || value === 'remote';
 
 const hasHostEventPayload = (
   type: HostEventType,
@@ -66,6 +88,8 @@ const hasHostEventPayload = (
   switch (type) {
     case 'ui.setFrame':
       return isFrameName(payload.frame);
+    case 'ui.surface':
+      return isActiveSurface(payload.surface);
     case 'selection.set':
       return (
         hasString(payload.path) &&
@@ -78,6 +102,16 @@ const hasHostEventPayload = (
       );
     case 'session.sync':
       return isCompatibleGlobalSessionSnapshot(payload.session);
+    case 'session.state':
+      return (
+        isCompatibleGlobalSessionSnapshot(payload.session) &&
+        isSessionOrigin(payload.origin)
+      );
+    case 'pipeline.state':
+      return (
+        payload.pipeline === null ||
+        isCompatibleGlobalSessionPipelineState(payload.pipeline)
+      );
     case 'ghost.trigger':
       return hasString(payload.type) && hasString(payload.path) && hasString(payload.hotspotId);
     default:

@@ -21,6 +21,9 @@ export const resolveObservationCategory = (
       return 'selection';
     case 'artifact.pathEdit':
       return 'artifact';
+    case 'pipeline.state':
+    case 'session.state':
+    case 'ui.surface':
     default:
       return 'pipeline';
   }
@@ -58,6 +61,23 @@ export const buildObservationPayload = (
         path: nextState.selection.path,
         activeSurface: nextState.ui.activeSurface,
         sessionId: event.payload.session.sessionId,
+      };
+    case 'session.state':
+      return {
+        sessionId: event.payload.session.sessionId,
+        origin: event.payload.origin,
+        activeSurface: event.payload.session.activeSurface,
+        activeFrame: event.payload.session.activeFrame,
+      };
+    case 'pipeline.state':
+      return {
+        status: event.payload.pipeline?.status ?? 'unknown',
+        draftId: event.payload.pipeline?.draftId,
+        compiledId: event.payload.pipeline?.compiledId,
+      };
+    case 'ui.surface':
+      return {
+        surface: event.payload.surface,
       };
     default:
       return {};

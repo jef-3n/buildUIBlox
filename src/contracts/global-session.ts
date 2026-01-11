@@ -2,6 +2,7 @@ import type { FrameName } from '../host/frame-types';
 import type { ActiveSurface } from './ui-state';
 import {
   hasNumber,
+  hasOptionalBoolean,
   hasOptionalString,
   hasString,
   isRecord,
@@ -31,6 +32,11 @@ export type GlobalSessionSnapshot = {
   selectionPath?: string;
   activeSurface: ActiveSurface;
   presence: Record<string, GlobalPresenceState>;
+  draftId?: string;
+  compiledId?: string;
+  compiled?: GlobalSessionCompiledShadow;
+  pipeline?: GlobalSessionPipelineState;
+  draftLock?: GlobalSessionDraftLock;
 };
 
 export type GlobalSessionUpdate = {
@@ -41,6 +47,41 @@ export type GlobalSessionUpdate = {
   activeFrame: FrameName;
   selectionPath?: string;
   activeSurface: ActiveSurface;
+  draftId?: string;
+  compiledId?: string;
+  compiled?: GlobalSessionCompiledShadow;
+  pipeline?: GlobalSessionPipelineState;
+  draftLock?: GlobalSessionDraftLock;
+};
+
+export type GlobalSessionPipelineStatus = 'idle' | 'compiling' | 'error' | 'success';
+
+export type GlobalSessionPipelineState = {
+  status: GlobalSessionPipelineStatus;
+  triggeredAt?: string;
+  abortedAt?: string;
+  publishedAt?: string;
+  draftId?: string;
+  compiledId?: string;
+  error?: GlobalSessionPipelineError;
+};
+
+export type GlobalSessionPipelineError = {
+  code: string;
+  message: string;
+};
+
+export type GlobalSessionDraftLock = {
+  locked: boolean;
+  draftId?: string;
+  lockedAt?: string;
+  releasedAt?: string;
+};
+
+export type GlobalSessionCompiledShadow = {
+  compiledId: string;
+  draftId: string;
+  publishedAt?: string;
 };
 
 const VALID_FRAMES: FrameName[] = ['desktop', 'tablet', 'mobile'];
@@ -68,6 +109,11 @@ const isGlobalSessionUpdate = (value: unknown): value is GlobalSessionUpdate => 
   if (!isFrameName(value.activeFrame)) return false;
   if (!hasOptionalString(value.selectionPath)) return false;
   if (!isActiveSurface(value.activeSurface)) return false;
+  if (!hasOptionalString(value.draftId)) return false;
+  if (!hasOptionalString(value.compiledId)) return false;
+  if (!isOptionalPipelineState(value.pipeline)) return false;
+  if (!isOptionalDraftLock(value.draftLock)) return false;
+  if (!isOptionalCompiledShadow(value.compiled)) return false;
   return true;
 };
 
@@ -96,3 +142,71 @@ export const isCompatibleGlobalSessionSnapshot = (
   }
   return true;
 };
+
+const isPipelineStatus = (value: unknown): value is GlobalSessionPipelineStatus =>
+  typeof value === 'string' &&
+  (value === 'idle' || value === 'compiling' || value === 'error' || value === 'success');
+
+const isPipelineError = (value: unknown): value is GlobalSessionPipelineError => {
+  if (!isRecord(value)) return false;
+  if (!hasString(value.code)) return false;
+  if (!hasString(value.message)) return false;
+  return true;
+};
+
+const isPipelineState = (value: unknown): value is GlobalSessionPipelineState => {
+  if (!isRecord(value)) return false;
+  if (!isPipelineStatus(value.status)) return false;
+  if (!hasOptionalString(value.triggeredAt)) return false;
+  if (!hasOptionalString(value.abortedAt)) return false;
+  if (!hasOptionalString(value.publishedAt)) return false;
+  if (!hasOptionalString(value.draftId)) return false;
+  if (!hasOptionalString(value.compiledId)) return false;
+  if (typeof value.error !== 'undefined' && !isPipelineError(value.error)) return false;
+  return true;
+};
+
+const isOptionalPipelineState = (
+  value: unknown
+): value is GlobalSessionPipelineState | undefined =>
+  typeof value === 'undefined' || isPipelineState(value);
+
+const isDraftLock = (value: unknown): value is GlobalSessionDraftLock => {
+  if (!isRecord(value)) return false;
+  if (!hasOptionalBoolean(value.locked)) return false;
+  if (typeof value.locked === 'undefined') return false;
+  if (!hasOptionalString(value.draftId)) return false;
+  if (!hasOptionalString(value.lockedAt)) return false;
+  if (!hasOptionalString(value.releasedAt)) return false;
+  return true;
+};
+
+const isOptionalDraftLock = (
+  value: unknown
+): value is GlobalSessionDraftLock | undefined =>
+  typeof value === 'undefined' || isDraftLock(value);
+
+const isCompiledShadow = (value: unknown): value is GlobalSessionCompiledShadow => {
+  if (!isRecord(value)) return false;
+  if (!hasString(value.compiledId)) return false;
+  if (!hasString(value.draftId)) return false;
+  if (!hasOptionalString(value.publishedAt)) return false;
+  return true;
+};
+
+const isOptionalCompiledShadow = (
+  value: unknown
+): value is GlobalSessionCompiledShadow | undefined =>
+  typeof value === 'undefined' || isCompiledShadow(value);
+
+export const isCompatibleGlobalSessionPipelineState = (
+  value?: unknown
+): value is GlobalSessionPipelineState => isPipelineState(value);
+
+export const isCompatibleGlobalSessionDraftLock = (
+  value?: unknown
+): value is GlobalSessionDraftLock => isDraftLock(value);
+
+export const isCompatibleGlobalSessionCompiledShadow = (
+  value?: unknown
+): value is GlobalSessionCompiledShadow => isCompiledShadow(value);
