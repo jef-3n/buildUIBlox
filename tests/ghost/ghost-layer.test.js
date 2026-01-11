@@ -8,6 +8,10 @@ describe('ghost layer coordinate stability', () => {
   it('renders hotspots using the provided rect coordinates verbatim', () => {
     const style = buildHotspotStyle(buildHotspotRect());
 
-    assert.equal(style, 'left:12px;top:24px;width:320px;height:180px;');
+    assert.equal(
+      style,
+      'left:12px;top:24px;width:320px;height:180px;',
+      'Expected hotspot styles to preserve the provided coordinates.'
+    );
   });
 });

@@ -30,6 +30,29 @@ describe('builder UI registry bootstrap fallback', () => {
     assert.equal(result.snapshot?.activeRegistry, 'local');
   });
 
+  it('reports the missing registry key when no fallback can be resolved', () => {
+    const manifest = createBuilderUiManifest({
+      activeRegistry: 'remote',
+      bootstrap: {
+        isSelfHosting: false,
+        fallbackRegistry: 'local',
+      },
+      registries: {
+        local: undefined,
+        remote: undefined,
+      },
+    });
+
+    const result = resolveBuilderUiRegistrySnapshot(manifest);
+
+    assert.equal(result.snapshot, undefined);
+    assert.equal(
+      result.missingRegistryKey,
+      'remote',
+      'Expected diagnostics to include the missing active registry key.'
+    );
+  });
+
   it('prefers the pinned bootstrap snapshot in self-hosted mode', () => {
     const manifest = createBuilderUiManifest({
       bootstrap: {
