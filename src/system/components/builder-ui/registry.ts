@@ -3,19 +3,95 @@ import type {
   BuilderUiRegistryKey,
   BuilderUiRegistry,
   BuilderUiManifestValidation,
+  BuilderUiRegistrySnapshot,
+  BuilderUiBootstrapState,
+  BuilderUiBootstrapSnapshotState,
 } from './manifest';
 import { validateBuilderUiManifest } from './manifest';
-
-export type BuilderUiRegistrySnapshot = {
-  boundary: string;
-  activeRegistry: BuilderUiRegistryKey;
-  registry: BuilderUiRegistry;
-  bootstrap: BuilderUiManifest['bootstrap'];
-};
 
 export type BuilderUiRegistryLoadResult =
   | { ok: true; snapshot: BuilderUiRegistrySnapshot; validation: BuilderUiManifestValidation }
   | { ok: false; validation: BuilderUiManifestValidation };
+
+const LIVE_BOOTSTRAP_VERSION = 'live';
+
+const toBootstrapSnapshot = (
+  bootstrap: BuilderUiBootstrapState
+): BuilderUiBootstrapSnapshotState => {
+  const { snapshots, ...rest } = bootstrap;
+  return rest;
+};
+
+export const createBuilderUiRegistrySnapshot = (
+  manifest: BuilderUiManifest,
+  version: string,
+  registryKey: BuilderUiRegistryKey = manifest.activeRegistry
+): BuilderUiRegistrySnapshot | undefined => {
+  const registry = manifest.registries[registryKey];
+  if (!registry) {
+    return undefined;
+  }
+  return {
+    version,
+    boundary: manifest.boundary,
+    activeRegistry: registryKey,
+    registry,
+    bootstrap: toBootstrapSnapshot(manifest.bootstrap),
+  };
+};
+
+export const pinBuilderUiBootstrapVersion = (
+  manifest: BuilderUiManifest,
+  versionPin?: string
+): BuilderUiManifest => ({
+  ...manifest,
+  bootstrap: {
+    ...manifest.bootstrap,
+    versionPin,
+  },
+});
+
+export const applyBuilderUiBootstrapFullClosure = (
+  manifest: BuilderUiManifest,
+  version: string
+): BuilderUiManifest => {
+  const snapshot = createBuilderUiRegistrySnapshot(
+    manifest,
+    version,
+    manifest.bootstrap.activeRegistry
+  );
+  const snapshots = snapshot
+    ? [
+        ...manifest.bootstrap.snapshots.filter((entry) => entry.version !== version),
+        snapshot,
+      ]
+    : manifest.bootstrap.snapshots;
+
+  return {
+    ...manifest,
+    activeRegistry: manifest.bootstrap.activeRegistry,
+    bootstrap: {
+      ...manifest.bootstrap,
+      isSelfHosting: true,
+      versionPin: version,
+      snapshots,
+    },
+  };
+};
+
+const resolveBootstrapSnapshot = (manifest: BuilderUiManifest) => {
+  if (!manifest.bootstrap.isSelfHosting) {
+    return undefined;
+  }
+  const { snapshots, versionPin } = manifest.bootstrap;
+  if (!snapshots.length) {
+    return undefined;
+  }
+  if (versionPin) {
+    return snapshots.find((snapshot) => snapshot.version === versionPin);
+  }
+  return snapshots[snapshots.length - 1];
+};
 
 export const switchBuilderUiRegistry = (
   manifest: BuilderUiManifest,
@@ -35,26 +111,44 @@ export const loadBuilderUiRegistry = (manifest: BuilderUiManifest): BuilderUiReg
     return { ok: false, validation };
   }
 
-  const registry = manifest.registries[manifest.activeRegistry];
+  const bootstrapSnapshot = resolveBootstrapSnapshot(manifest);
+  if (bootstrapSnapshot) {
+    return {
+      ok: true,
+      validation,
+      snapshot: bootstrapSnapshot,
+    };
+  }
+
+  const targetRegistryKey = manifest.bootstrap.isSelfHosting
+    ? manifest.bootstrap.activeRegistry
+    : manifest.activeRegistry;
+  const registry =
+    manifest.registries[targetRegistryKey] ??
+    manifest.registries[manifest.bootstrap.fallbackRegistry];
   if (!registry) {
     return {
       ok: false,
       validation: {
         ok: false,
-        errors: [`missing active registry ${manifest.activeRegistry}`],
+        errors: [`missing active registry ${targetRegistryKey}`],
       },
     };
   }
 
+  const snapshot =
+    createBuilderUiRegistrySnapshot(manifest, LIVE_BOOTSTRAP_VERSION, registry.key) ?? {
+      version: LIVE_BOOTSTRAP_VERSION,
+      boundary: manifest.boundary,
+      activeRegistry: registry.key,
+      registry,
+      bootstrap: toBootstrapSnapshot(manifest.bootstrap),
+    };
+
   return {
     ok: true,
     validation,
-    snapshot: {
-      boundary: manifest.boundary,
-      activeRegistry: manifest.activeRegistry,
-      registry,
-      bootstrap: manifest.bootstrap,
-    },
+    snapshot,
   };
 };
 
