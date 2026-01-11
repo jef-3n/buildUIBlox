@@ -22,9 +22,9 @@ export const UI_DRAWER_OPEN = 'ui.drawer.open' as const;
 export const UI_DRAWER_CLOSE = 'ui.drawer.close' as const;
 export const WAREHOUSE_ADD_INTENT = 'warehouse.addIntent' as const;
 export const WAREHOUSE_MOVE_INTENT = 'warehouse.moveIntent' as const;
-export const PIPELINE_TRIGGER = 'pipeline.trigger' as const;
-export const PIPELINE_ABORT = 'pipeline.abort' as const;
-export const PIPELINE_PUBLISH = 'pipeline.publish' as const;
+export const PIPELINE_TRIGGER_BUILD = 'PIPELINE_TRIGGER_BUILD' as const;
+export const PIPELINE_ABORT_BUILD = 'PIPELINE_ABORT_BUILD' as const;
+export const PIPELINE_PUBLISH_VERSION = 'PIPELINE_PUBLISH_VERSION' as const;
 export const GHOST_MAP_EDIT = 'ghostMap.edit' as const;
 export const BUILDER_UI_BOOTSTRAP_TOGGLE_REGISTRY =
   'builderUi.bootstrap.toggleRegistry' as const;
@@ -48,9 +48,9 @@ export type HostEventType =
   | 'session.sync'
   | 'session.state'
   | 'pipeline.state'
-  | typeof PIPELINE_TRIGGER
-  | typeof PIPELINE_ABORT
-  | typeof PIPELINE_PUBLISH
+  | typeof PIPELINE_TRIGGER_BUILD
+  | typeof PIPELINE_ABORT_BUILD
+  | typeof PIPELINE_PUBLISH_VERSION
   | typeof GHOST_MAP_EDIT
   | 'ghost.trigger'
   | typeof WAREHOUSE_ADD_INTENT
@@ -80,9 +80,14 @@ export type HostEventPayloadMap = {
   'session.sync': { session: GlobalSessionSnapshot };
   'session.state': { session: GlobalSessionSnapshot; origin: 'local' | 'remote' };
   'pipeline.state': { pipeline: GlobalSessionPipelineState | null };
-  [PIPELINE_TRIGGER]: { draftId: string };
-  [PIPELINE_ABORT]: { reason?: string };
-  [PIPELINE_PUBLISH]: { compiledId?: string; draftId?: string };
+  [PIPELINE_TRIGGER_BUILD]: { draftId: string };
+  [PIPELINE_ABORT_BUILD]: { reason?: string };
+  [PIPELINE_PUBLISH_VERSION]: {
+    tag: string;
+    notes?: string;
+    compiledId?: string;
+    draftId?: string;
+  };
   [GHOST_MAP_EDIT]: {
     path: string;
     frame?: FrameName;
@@ -212,12 +217,14 @@ const hasHostEventPayload = (
         payload.pipeline === null ||
         isCompatibleGlobalSessionPipelineState(payload.pipeline)
       );
-    case PIPELINE_TRIGGER:
+    case PIPELINE_TRIGGER_BUILD:
       return hasString(payload.draftId);
-    case PIPELINE_ABORT:
+    case PIPELINE_ABORT_BUILD:
       return typeof payload.reason === 'undefined' || hasString(payload.reason);
-    case PIPELINE_PUBLISH:
+    case PIPELINE_PUBLISH_VERSION:
       return (
+        hasString(payload.tag) &&
+        (typeof payload.notes === 'undefined' || hasString(payload.notes)) &&
         (typeof payload.compiledId === 'undefined' || hasString(payload.compiledId)) &&
         (typeof payload.draftId === 'undefined' || hasString(payload.draftId))
       );

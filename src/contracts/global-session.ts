@@ -67,6 +67,8 @@ export type GlobalSessionPipelineState = {
   triggeredAt?: string;
   abortedAt?: string;
   publishedAt?: string;
+  tag?: string;
+  notes?: string;
   draftId?: string;
   compiledId?: string;
   error?: GlobalSessionPipelineError;
@@ -187,6 +189,8 @@ const isPipelineState = (value: unknown): value is GlobalSessionPipelineState =>
   if (!hasOptionalString(value.triggeredAt)) return false;
   if (!hasOptionalString(value.abortedAt)) return false;
   if (!hasOptionalString(value.publishedAt)) return false;
+  if (!hasOptionalString(value.tag)) return false;
+  if (!hasOptionalString(value.notes)) return false;
   if (!hasOptionalString(value.draftId)) return false;
   if (!hasOptionalString(value.compiledId)) return false;
   if (typeof value.error !== 'undefined' && !isPipelineError(value.error)) return false;

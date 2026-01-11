@@ -88,6 +88,8 @@ const hasPipelineChanged = (
     prev.triggeredAt !== next.triggeredAt ||
     prev.abortedAt !== next.abortedAt ||
     prev.publishedAt !== next.publishedAt ||
+    prev.tag !== next.tag ||
+    prev.notes !== next.notes ||
     prev.draftId !== next.draftId ||
     prev.compiledId !== next.compiledId ||
     prev.error?.code !== next.error?.code ||
@@ -344,7 +346,7 @@ export class SharedSession extends EventTarget {
     });
   }
 
-  publishPipeline(compiledId: string) {
+  publishPipeline(compiledId: string, metadata?: { tag: string; notes?: string }) {
     const now = new Date().toISOString();
     const draftId = this.state.draftId;
     this.update({
@@ -360,6 +362,8 @@ export class SharedSession extends EventTarget {
       pipeline: {
         status: 'success',
         publishedAt: now,
+        tag: metadata?.tag,
+        notes: metadata?.notes,
         draftId,
         compiledId,
       },
