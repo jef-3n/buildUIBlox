@@ -1,38 +1,25 @@
 import type { FrameName } from './frame-types';
 import type { CompiledArtifact } from './compiled-canvas';
 import type { ObservationCategory, ObservationPacket } from './telemetry';
-import type { SharedSessionSnapshot } from './shared-session';
-
-export type UiState = {
-  activeFrame: FrameName;
-  activeSurface: 'canvas' | 'frames' | 'metadata' | 'telemetry' | 'unknown';
-};
-
-export type SelectionState = {
-  path?: string;
-};
+import type { ActiveSelection } from '../contracts/active-selection';
+import type { HostEventEnvelope, HostEventType } from '../contracts/event-envelope';
+import type { UiState } from '../contracts/ui-state';
 
 export type HostState = {
   ui: UiState;
-  selection: SelectionState;
+  selection: ActiveSelection;
   selectionsByFrame: Record<FrameName, string | undefined>;
   artifact: CompiledArtifact;
 };
 
-export type HostEvent =
-  | { type: 'UI_SET_FRAME'; payload: { frame: FrameName } }
-  | { type: 'SELECTION_SET'; payload: { path: string } }
-  | {
-      type: 'ARTIFACT_PATH_EDIT';
-      payload: { path: string; value: unknown; frame?: FrameName };
-    }
-  | { type: 'SESSION_SYNC'; payload: { session: SharedSessionSnapshot } };
-
-export const resolveObservationCategory = (event: HostEvent): ObservationCategory => {
-  switch (event.type) {
-    case 'SELECTION_SET':
+export const resolveObservationCategory = (
+  event: HostEventEnvelope | HostEventType
+): ObservationCategory => {
+  const eventType = typeof event === 'string' ? event : event.type;
+  switch (eventType) {
+    case 'selection.set':
       return 'selection';
-    case 'ARTIFACT_PATH_EDIT':
+    case 'artifact.pathEdit':
       return 'artifact';
     default:
       return 'pipeline';
@@ -40,24 +27,24 @@ export const resolveObservationCategory = (event: HostEvent): ObservationCategor
 };
 
 export const buildObservationPayload = (
-  event: HostEvent,
+  event: HostEventEnvelope,
   nextState: HostState,
   prevState: HostState
 ) => {
   switch (event.type) {
-    case 'UI_SET_FRAME':
+    case 'ui.setFrame':
       return {
         frame: nextState.ui.activeFrame,
         previousFrame: prevState.ui.activeFrame,
         activeSurface: nextState.ui.activeSurface,
       };
-    case 'SELECTION_SET':
+    case 'selection.set':
       return {
         path: nextState.selection.path,
         frame: nextState.ui.activeFrame,
         activeSurface: nextState.ui.activeSurface,
       };
-    case 'ARTIFACT_PATH_EDIT':
+    case 'artifact.pathEdit':
       return {
         path: event.payload.path,
         frame: event.payload.frame ?? nextState.ui.activeFrame,
@@ -65,7 +52,7 @@ export const buildObservationPayload = (
         draftId: nextState.artifact.draftId,
         activeSurface: nextState.ui.activeSurface,
       };
-    case 'SESSION_SYNC':
+    case 'session.sync':
       return {
         frame: nextState.ui.activeFrame,
         path: nextState.selection.path,
@@ -78,7 +65,7 @@ export const buildObservationPayload = (
 };
 
 export const createObservationPacket = (
-  event: HostEvent,
+  event: HostEventEnvelope,
   nextState: HostState,
   prevState: HostState,
   sequence: number
@@ -86,7 +73,7 @@ export const createObservationPacket = (
   id: `${Date.now()}-${sequence}`,
   sequence,
   emittedAt: new Date().toISOString(),
-  source: 'nuwa-host',
+  source: event.source,
   category: resolveObservationCategory(event),
   event: event.type,
   payload: buildObservationPayload(event, nextState, prevState),
