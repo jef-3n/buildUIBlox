@@ -263,11 +263,10 @@ export class CompiledCanvas extends LitElement {
     dataContext: Record<string, unknown>,
     frameName: FrameName
   ) {
+    const dataItems = getPathValue(dataContext, node.props?.dataPath);
     const items =
       (Array.isArray(node.props?.items) && node.props?.items) ||
-      (Array.isArray(getPathValue(dataContext, node.props?.dataPath))
-        ? (getPathValue(dataContext, node.props?.dataPath) as unknown[])
-        : []);
+      (Array.isArray(dataItems) ? (dataItems as unknown[]) : []);
     const templateId = node.props?.templateId;
     const templateNode = templateId ? this.artifact?.runtime.nodes[templateId] : undefined;
 
@@ -286,6 +285,15 @@ export class CompiledCanvas extends LitElement {
         ? { repeater: true, [node.props.className]: true }
         : { repeater: true }
     );
+    const itemClasses = classMap(
+      templateNode.props?.className
+        ? { 'repeater-item': true, [templateNode.props.className]: true }
+        : { 'repeater-item': true }
+    );
+    const itemStyle = resolveStyler(templateNode.props?.styler, this.activeFrame);
+    const templateTag = templateNode.props?.tag ?? 'div';
+    const templateTagName = unsafeStatic(templateTag);
+    const templateChildren = templateNode.children ?? [];
 
     return html`
       <div class=${classes} style=${styleMap(style)}>
@@ -293,18 +301,9 @@ export class CompiledCanvas extends LitElement {
           items,
           (_item, index) => index,
           (item) => {
-            const itemClasses = classMap(
-              templateNode.props?.className
-                ? { 'repeater-item': true, [templateNode.props.className]: true }
-                : { 'repeater-item': true }
-            );
-            const itemStyle = resolveStyler(templateNode.props?.styler, this.activeFrame);
-            const templateTag = templateNode.props?.tag ?? 'div';
-            const templateTagName = unsafeStatic(templateTag);
-
             return staticHtml`
               <${templateTagName} class=${itemClasses} style=${styleMap(itemStyle)}>
-                ${templateNode.children?.map((childId) =>
+                ${templateChildren.map((childId) =>
                   this.renderNode(childId, frame, item as Record<string, unknown>, frameName)
                 )}
               </${templateTagName}>
